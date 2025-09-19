@@ -4,7 +4,7 @@ require('dotenv').config();
 const config = {
   // Server Configuration
   server: {
-    port: parseInt(process.env.PORT) || 5001,
+    port: parseInt(process.env.PORT) || 8080,
     environment: process.env.NODE_ENV || 'development',
     cors: {
       allowedOrigins: [
