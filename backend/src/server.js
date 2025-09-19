@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 
 // Import centralized configuration
 const config = require('./config');
@@ -54,6 +55,9 @@ app.use(cors({
 app.use(express.json({ limit: config.api.maxBodySize }));
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files from the frontend build
+app.use(express.static(path.join(__dirname, '../public')));
+
 // Health check route
 app.get('/', (req, res) => {
   res.json({
@@ -94,22 +98,28 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
-// 404 handler for unknown routes
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    requestedUrl: req.originalUrl,
-    availableRoutes: [
-      'POST /api/auth/login',
-      'GET /api/tickets',
-      'GET /api/communities',
-      'GET /api/properties', 
-      'GET /api/stakeholders',
-      'GET /api/amenities',
-      'POST /api/assignments/requests'
-    ]
-  });
+// Handle client-side routing - serve index.html for non-API routes
+app.get('*', (req, res) => {
+  // If it's an API route that wasn't handled, return 404 JSON
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({
+      success: false,
+      message: 'API route not found',
+      requestedUrl: req.originalUrl,
+      availableRoutes: [
+        'POST /api/auth/login',
+        'GET /api/tickets',
+        'GET /api/communities',
+        'GET /api/properties', 
+        'GET /api/stakeholders',
+        'GET /api/amenities',
+        'POST /api/assignments/requests'
+      ]
+    });
+  }
+  
+  // For all other routes, serve the frontend app
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // Global error handler
