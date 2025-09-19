@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* HOA Nexus Theme Variables */
+@layer base {
+  :root {
+    /* Light Mode Colors */
+    --surface-color: theme('colors.white');
+    --surface-secondary-color: theme('colors.gray.50');
+    --surface-tertiary-color: theme('colors.gray.100');
+    
+    --text-primary-color: theme('colors.gray.900');
+    --text-secondary-color: theme('colors.gray.600');
+    --text-tertiary-color: theme('colors.gray.500');
+    
+    --border-primary-color: theme('colors.gray.200');
+    --border-secondary-color: theme('colors.gray.100');
+  }
+
+  .dark {
+    /* Dark Mode Colors */
+    --surface-color: theme('colors.dark.800');
+    --surface-secondary-color: theme('colors.dark.900');
+    --surface-tertiary-color: theme('colors.dark.700');
+    
+    --text-primary-color: theme('colors.gray.100');
+    --text-secondary-color: theme('colors.gray.300');
+    --text-tertiary-color: theme('colors.gray.400');
+    
+    --border-primary-color: theme('colors.dark.600');
+    --border-secondary-color: theme('colors.dark.700');
+  }
+}
+
+/* Theme transition animations */
+@layer components {
+  .theme-transition {
+    @apply transition-colors duration-200 ease-in-out;
+  }
+}
