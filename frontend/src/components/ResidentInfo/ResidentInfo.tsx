@@ -275,26 +275,28 @@ const ResidentInfo: React.FC<ResidentInfoProps> = ({ community }) => {
           </div>
 
           {/* Properties List */}
-          {filteredProperties.length === 0 ? (
-            <div className="text-center py-12">
-              <HomeIcon className="mx-auto h-12 w-12 text-tertiary mb-4" />
-              <h3 className="text-lg font-medium text-primary mb-2">
-                {searchTerm ? 'No properties found' : 'No properties available'}
-              </h3>
-              <p className="text-secondary">
-                {searchTerm 
-                  ? 'Try adjusting your search criteria.' 
-                  : 'This community does not have any properties yet.'
-                }
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProperties.map((property) => (
-                <PropertyCard key={property.id} property={property} />
-              ))}
-            </div>
-          )}
+          <div className="overflow-y-auto">
+            {filteredProperties.length === 0 ? (
+              <div className="text-center py-12">
+                <HomeIcon className="mx-auto h-12 w-12 text-tertiary mb-4" />
+                <h3 className="text-lg font-medium text-primary mb-2">
+                  {searchTerm ? 'No properties found' : 'No properties available'}
+                </h3>
+                <p className="text-secondary">
+                  {searchTerm 
+                    ? 'Try adjusting your search criteria.' 
+                    : 'This community does not have any properties yet.'
+                  }
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProperties.map((property) => (
+                  <PropertyCard key={property.id} property={property} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

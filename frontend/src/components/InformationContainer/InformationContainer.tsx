@@ -4,6 +4,7 @@ import CommunityInfo from '../CommunityInfo/CommunityInfo';
 import ResidentInfo from '../ResidentInfo/ResidentInfo';
 import AmenitiesInfo from '../AmenitiesInfo/AmenitiesInfo';
 import Directory from '../Directory/Directory';
+import AddStakeholder from '../Directory/AddStakeholder';
 import Forms from '../Forms/Forms';
 import Tickets from '../Tickets';
 import type { Community } from '../../types';
@@ -11,7 +12,7 @@ import { useCommunity } from '../../context';
 
 interface InformationContainerProps {
   selectedCommunity: Community | null;
-  currentOverlay?: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | null;
+  currentOverlay?: 'directory' | 'add-stakeholder' | 'forms' | 'tickets' | 'reports' | 'settings' | null;
   overlayParams?: Record<string, any>;
 }
 
@@ -34,13 +35,69 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
     return (
       <div className="h-full bg-surface theme-transition">
         {currentOverlay === 'directory' && (
-          <Directory 
-            initialView={overlayParams.view || 'lookup'} 
-            onBackToCommunity={() => {
-              // This will be handled by the parent component
-              window.dispatchEvent(new CustomEvent('overlay:close'));
-            }}
-          />
+          <div className="h-full flex flex-col">
+            <Directory 
+              onBackToCommunity={() => {
+                window.dispatchEvent(new CustomEvent('overlay:close'));
+              }}
+              onAddStakeholder={() => {
+                window.dispatchEvent(new CustomEvent('overlay:navigate', { 
+                  detail: { overlay: 'add-stakeholder' } 
+                }));
+              }}
+            />
+          </div>
+        )}
+        {currentOverlay === 'add-stakeholder' && (
+          <div className="h-full flex flex-col">
+            {/* Add Stakeholder Header */}
+            <div className="bg-surface-secondary border-b border-primary p-4 flex-shrink-0">
+              <div className="space-y-4">
+                {/* Breadcrumbs */}
+                <div className="flex items-center space-x-2 text-sm">
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('overlay:close'))}
+                    className="text-secondary hover:text-primary transition-colors"
+                  >
+                    Community Info
+                  </button>
+                  <span className="text-tertiary">&gt;</span>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('overlay:navigate', { detail: { overlay: 'directory' } }))}
+                    className="text-secondary hover:text-primary transition-colors"
+                  >
+                    Directory
+                  </button>
+                  <span className="text-tertiary">&gt;</span>
+                  <span className="text-primary font-medium">Add New</span>
+                </div>
+                
+                {/* Title */}
+                <div>
+                  <h1 className="text-xl font-semibold text-primary">Add New Stakeholder</h1>
+                  <p className="text-sm text-secondary">Create a new stakeholder in the community directory</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Scrollable Form */}
+            <div className="overflow-y-auto p-6" style={{ height: 'calc(100vh - 235px)' }}>
+              <AddStakeholder 
+                onSuccess={() => {
+                  // Go back to directory after successful creation
+                  window.dispatchEvent(new CustomEvent('overlay:navigate', { 
+                    detail: { overlay: 'directory' } 
+                  }));
+                }}
+                onCancel={() => {
+                  // Go back to directory on cancel
+                  window.dispatchEvent(new CustomEvent('overlay:navigate', { 
+                    detail: { overlay: 'directory' } 
+                  }));
+                }}
+              />
+            </div>
+          </div>
         )}
         {currentOverlay === 'forms' && (
           <Forms 

@@ -16,6 +16,8 @@ RUN npm ci --only=production
 WORKDIR /app/frontend
 RUN npm ci
 COPY frontend/ .
+# Set production API URL to use relative paths
+ENV VITE_API_BASE_URL=/api
 RUN npm run build
 
 # Go back to app root and copy backend files

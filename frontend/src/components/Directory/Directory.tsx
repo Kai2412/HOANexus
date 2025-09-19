@@ -4,20 +4,16 @@ import {
   UserPlusIcon
 } from '@heroicons/react/24/outline';
 import DirectoryLookup from './DirectoryLookup';
-import AddStakeholder from './AddStakeholder';
 import type { Stakeholder } from '../../types/stakeholder';
 import { STAKEHOLDER_TYPES, STAKEHOLDER_STATUSES } from '../../types/stakeholder';
 import { stakeholderService } from '../../services/stakeholderService';
 
-type DirectoryView = 'lookup' | 'add';
-
 interface DirectoryProps {
-  initialView?: DirectoryView;
   onBackToCommunity?: () => void;
+  onAddStakeholder?: () => void;
 }
 
-const Directory: React.FC<DirectoryProps> = ({ initialView = 'lookup', onBackToCommunity }) => {
-  const [currentView, setCurrentView] = useState<DirectoryView>(initialView);
+const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakeholder }) => {
   const [selectedStakeholder, setSelectedStakeholder] = useState<Stakeholder | null>(null);
   
   // Stakeholder data state
@@ -30,18 +26,27 @@ const Directory: React.FC<DirectoryProps> = ({ initialView = 'lookup', onBackToC
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const stakeholdersPerPage = 10;
 
   // Load stakeholders on component mount
   useEffect(() => {
-    if (currentView === 'lookup') {
-      loadStakeholders();
-    }
-  }, [currentView]);
+    loadStakeholders();
+  }, []);
 
   // Filter stakeholders when search term, type, or status changes
   useEffect(() => {
     filterStakeholders();
   }, [stakeholders, searchTerm, selectedType, selectedStatus]);
+
+  // Reset to page 1 when filters change (except currentPage itself)
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm, selectedType, selectedStatus]);
 
   const loadStakeholders = async () => {
     setLoading(true);
@@ -106,16 +111,6 @@ const Directory: React.FC<DirectoryProps> = ({ initialView = 'lookup', onBackToC
     setFilteredStakeholders(filtered);
   };
 
-  const handleViewChange = (view: DirectoryView) => {
-    setCurrentView(view);
-    setSelectedStakeholder(null);
-  };
-
-  const handleStakeholderCreated = (stakeholder: Stakeholder) => {
-    // After creating a stakeholder, switch back to lookup view and refresh the list
-    setCurrentView('lookup');
-    loadStakeholders();
-  };
 
   const handleDeleteStakeholder = async (id: number) => {
     try {
@@ -161,173 +156,125 @@ const Directory: React.FC<DirectoryProps> = ({ initialView = 'lookup', onBackToC
     console.log('View stakeholder:', stakeholder);
   };
 
-  const handleBreadcrumbClick = (target: 'community' | 'directory') => {
-    if (target === 'community' && onBackToCommunity) {
-      onBackToCommunity();
-    } else if (target === 'directory') {
-      setCurrentView('lookup');
-    }
-  };
-
   const renderBreadcrumbs = () => {
-    if (currentView === 'lookup') {
-      return (
-        <div className="flex items-center space-x-2 text-sm">
-          <button
-            onClick={() => handleBreadcrumbClick('community')}
-            className="text-secondary hover:text-primary transition-colors"
-          >
-            Community Info
-          </button>
-          <span className="text-tertiary">&gt;</span>
-          <span className="text-primary font-medium">Directory</span>
-        </div>
-      );
-    } else if (currentView === 'add') {
-      return (
-        <div className="flex items-center space-x-2 text-sm">
-          <button
-            onClick={() => handleBreadcrumbClick('community')}
-            className="text-secondary hover:text-primary transition-colors"
-          >
-            Community Info
-          </button>
-          <span className="text-tertiary">&gt;</span>
-          <button
-            onClick={() => handleBreadcrumbClick('directory')}
-            className="text-secondary hover:text-primary transition-colors"
-          >
-            Directory
-          </button>
-          <span className="text-tertiary">&gt;</span>
-          <span className="text-primary font-medium">Add New</span>
-        </div>
-      );
-    }
-    return null;
+    return (
+      <div className="flex items-center space-x-2 text-sm">
+        <button
+          onClick={() => onBackToCommunity?.()}
+          className="text-secondary hover:text-primary transition-colors"
+        >
+          Community Info
+        </button>
+        <span className="text-tertiary">&gt;</span>
+        <span className="text-primary font-medium">Directory</span>
+      </div>
+    );
   };
 
-  const renderView = () => {
-    switch (currentView) {
-      case 'lookup':
-        return (
-          <DirectoryLookup
-            stakeholders={stakeholders}
-            filteredStakeholders={filteredStakeholders}
-            loading={loading}
-            error={error}
-            onEditStakeholder={handleEditStakeholder}
-            onViewStakeholder={handleViewStakeholder}
-            onDeleteStakeholder={handleDeleteStakeholder}
-          />
-        );
-      case 'add':
-        return (
-          <AddStakeholder
-            onSuccess={handleStakeholderCreated}
-            onCancel={() => setCurrentView('lookup')}
-          />
-        );
-      default:
-        return null;
-    }
-  };
+  // Calculate pagination
+  const totalStakeholders = filteredStakeholders.length;
+  const totalPages = Math.ceil(totalStakeholders / stakeholdersPerPage);
+  const startIndex = (currentPage - 1) * stakeholdersPerPage;
+  const endIndex = startIndex + stakeholdersPerPage;
+  const paginatedStakeholders = filteredStakeholders.slice(startIndex, endIndex);
+  const hasMultiplePages = totalPages > 1;
+
 
   return (
     <div className="h-full flex flex-col">
-      {/* Navigation Header */}
-      <div className="bg-surface-secondary border-b border-primary p-4">
-        {currentView === 'lookup' ? (
-          <div className="space-y-4">
-            {/* Breadcrumbs */}
+      {/* Directory Header - Fixed */}
+      <div className="bg-surface-secondary border-b border-primary p-4 flex-shrink-0">
+        <div className="space-y-4">
+          {/* Breadcrumbs */}
+          <div>
+            {renderBreadcrumbs()}
+          </div>
+          
+          {/* Title and Count */}
+          <div className="flex items-center justify-between">
             <div>
-              {renderBreadcrumbs()}
+              <h1 className="text-xl font-semibold text-primary">Stakeholder Directory</h1>
+              <p className="text-sm text-secondary">Search and manage community stakeholders</p>
             </div>
-            
-            {/* Title and Count */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-semibold text-primary">Stakeholder Directory</h1>
-                <p className="text-sm text-secondary">Search and manage community stakeholders</p>
+            <div className="flex items-center space-x-4">
+              <div className="text-sm text-secondary">
+                {filteredStakeholders.length} of {stakeholders.length} stakeholders
               </div>
-              <div className="flex items-center space-x-4">
-                <div className="text-sm text-secondary">
-                  {filteredStakeholders.length} of {stakeholders.length} stakeholders
-                </div>
-                <button
-                  onClick={() => handleViewChange('add')}
-                  className="flex items-center space-x-2 bg-royal-600 hover:bg-royal-700 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  <UserPlusIcon className="h-5 w-5" />
-                  <span>Add New</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Search and Filters */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              {/* Search Input */}
-              <div className="flex-1">
-                <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-secondary" />
-                  <input
-                    type="text"
-                    placeholder="Search by name, company, email, or phone..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-primary rounded-lg bg-surface text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
-                  />
-                </div>
-              </div>
-
-              {/* Type Filter */}
-              <div className="sm:w-48">
-                <select
-                  value={selectedType}
-                  onChange={(e) => setSelectedType(e.target.value)}
-                  className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
-                >
-                  <option value="all">All Types</option>
-                  {STAKEHOLDER_TYPES.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Status Filter */}
-              <div className="sm:w-48">
-                <select
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
-                >
-                  <option value="all">All Statuses</option>
-                  {STAKEHOLDER_STATUSES.map(status => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </select>
-              </div>
+              <button
+                onClick={() => onAddStakeholder?.()}
+                className="flex items-center space-x-2 bg-royal-600 hover:bg-royal-700 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                <UserPlusIcon className="h-5 w-5" />
+                <span>Add New</span>
+              </button>
             </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Breadcrumbs */}
-            <div>
-              {renderBreadcrumbs()}
+
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Search Input */}
+            <div className="flex-1">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-secondary" />
+                <input
+                  type="text"
+                  placeholder="Search by name, company, email, or phone..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-primary rounded-lg bg-surface text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
+                />
+              </div>
             </div>
-            
-            {/* Title */}
-            <div>
-              <h1 className="text-xl font-semibold text-primary">Add New Stakeholder</h1>
-              <p className="text-sm text-secondary">Create a new stakeholder in the community directory</p>
+
+            {/* Type Filter */}
+            <div className="sm:w-48">
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
+              >
+                <option value="all">All Types</option>
+                {STAKEHOLDER_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div className="sm:w-48">
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
+              >
+                <option value="all">All Statuses</option>
+                {STAKEHOLDER_STATUSES.map(status => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        {renderView()}
+      {/* Directory User List - Scrollable */}
+      <div className="overflow-y-auto p-6" style={{ height: 'calc(100vh - 350px)' }}>
+        <DirectoryLookup
+          stakeholders={stakeholders}
+          filteredStakeholders={paginatedStakeholders}
+          loading={loading}
+          error={error}
+          onEditStakeholder={handleEditStakeholder}
+          onViewStakeholder={handleViewStakeholder}
+          onDeleteStakeholder={handleDeleteStakeholder}
+          totalStakeholders={totalStakeholders}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          hasMultiplePages={hasMultiplePages}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          onPageChange={setCurrentPage}
+        />
       </div>
     </div>
   );

@@ -1,18 +1,17 @@
-# fly.toml app configuration file generated for hoa-nexus on 2025-09-19T22:30:00Z
+# fly.toml app configuration file generated for hoa-nexus on 2025-09-18T22:01:17-06:00
+#
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
 app = 'hoa-nexus'
 primary_region = 'dfw'
 
 [build]
 
-[env]
-  PORT = "8080"
-
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
   processes = ['app']
@@ -21,5 +20,3 @@ primary_region = 'dfw'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-
-[mounts]

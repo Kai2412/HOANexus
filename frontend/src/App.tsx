@@ -72,14 +72,25 @@ function AppContent() {
       handleOverlayNavigation('forms', { view: 'form', form: formName });
     };
 
+    const handleOverlayNavigate = (event: any) => {
+      // Navigate to a different overlay
+      const overlayName = event.detail?.overlay;
+      if (overlayName) {
+        setCurrentOverlay(overlayName);
+        setOverlayParams({});
+      }
+    };
+
     window.addEventListener('auth:login', handleAuthLogin);
     window.addEventListener('auth:logout', handleAuthLogout);
     window.addEventListener('navigate:forms', handleNavigateToForms);
+    window.addEventListener('overlay:navigate', handleOverlayNavigate);
     
     return () => {
       window.removeEventListener('auth:login', handleAuthLogin);
       window.removeEventListener('auth:logout', handleAuthLogout);
       window.removeEventListener('navigate:forms', handleNavigateToForms);
+      window.removeEventListener('overlay:navigate', handleOverlayNavigate);
     };
   }, [])
 
