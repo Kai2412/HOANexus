@@ -4,6 +4,7 @@ export * from './property';
 export * from './stakeholder';
 export * from './amenity';
 export * from './api';
+export * from './reference';
 
 // Legacy types for backward compatibility
 export interface ApiResponse<T = unknown> {

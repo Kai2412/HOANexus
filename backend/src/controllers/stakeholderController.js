@@ -26,15 +26,16 @@ const getStakeholderById = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Validate ID
-    if (!id || isNaN(id)) {
+    // Validate GUID format
+    const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !guidRegex.test(id)) {
       return res.status(400).json({
         success: false,
-        message: 'Valid stakeholder ID is required'
+        message: 'Valid stakeholder ID (GUID) is required'
       });
     }
 
-    const stakeholder = await Stakeholder.getById(parseInt(id));
+    const stakeholder = await Stakeholder.getById(id);
     
     if (!stakeholder) {
       return res.status(404).json({
@@ -150,15 +151,8 @@ const createStakeholder = async (req, res) => {
       });
     }
 
-    // Validate stakeholder type
-    const validTypes = ['Resident', 'Company Employee', 'Vendor', 'Other'];
-    if (!validTypes.includes(stakeholderData.Type)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid stakeholder type',
-        validTypes: validTypes
-      });
-    }
+    // Type validation removed - now using dynamic dropdowns from cor_DynamicDropChoices
+    // The database will store the text value (ChoiceValue) directly
 
     // Validate email format if provided
     if (stakeholderData.Email) {
@@ -195,12 +189,21 @@ const createStakeholder = async (req, res) => {
     // Set defaults
     stakeholderData.PreferredContactMethod = stakeholderData.PreferredContactMethod || 'Email';
 
+    // Validate email is required if portal access is enabled
+    if (stakeholderData.PortalAccessEnabled && !stakeholderData.Email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required when portal access is enabled'
+      });
+    }
+
     // Map controller field names to model field names
     const modelData = {
       Type: stakeholderData.Type,
       SubType: stakeholderData.SubType,
       AccessLevel: stakeholderData.AccessLevel,
-      CommunityID: stakeholderData.CommunityID,
+      Department: stakeholderData.Department,
+      Title: stakeholderData.Title,
       FirstName: stakeholderData.FirstName,
       LastName: stakeholderData.LastName,
       CompanyName: stakeholderData.CompanyName,
@@ -209,11 +212,66 @@ const createStakeholder = async (req, res) => {
       MobilePhone: stakeholderData.MobilePhone,
       PreferredContactMethod: stakeholderData.PreferredContactMethod,
       Status: stakeholderData.Status,
-      PortalAccessEnabled: stakeholderData.PortalAccessEnabled,
-      Notes: stakeholderData.Notes
+      PortalAccessEnabled: stakeholderData.PortalAccessEnabled || false,
+      Notes: stakeholderData.Notes,
+      CreatedBy: req.user?.stakeholderId || null
     };
+    
+    // Debug logging
+    logger.debug('Creating stakeholder', 'StakeholderController', {
+      createdBy: req.user?.stakeholderId,
+      userId: req.user?.userId,
+      hasUser: !!req.user
+    });
 
+    // Create stakeholder in client database
     const newStakeholder = await Stakeholder.create(modelData);
+    
+    // Auto-create UserAccount in master database if portal access is enabled
+    if (newStakeholder.PortalAccessEnabled && newStakeholder.Email) {
+      try {
+        const UserAccount = require('../models/userAccount');
+        const { getCurrentOrganizationId } = require('../utils/organizationHelper');
+        
+        // Get OrganizationID for current client database
+        const organizationId = await getCurrentOrganizationId();
+        
+        if (!organizationId) {
+          logger.warn('Could not find organization ID for database', 'StakeholderController', {
+            database: require('../config').database.database
+          });
+          // Continue without creating account - IT can link manually later
+        } else {
+          // Create UserAccount in master database
+          const userAccount = await UserAccount.create({
+            organizationId,
+            email: newStakeholder.Email,
+            stakeholderId: newStakeholder.StakeholderID,
+            firstName: newStakeholder.FirstName,
+            lastName: newStakeholder.LastName
+          });
+          
+          // Log temp password for dev (console)
+          console.log('\n========================================');
+          console.log('NEW USER ACCOUNT CREATED');
+          console.log('========================================');
+          console.log(`Email: ${userAccount.Email}`);
+          console.log(`Temp Password: ${userAccount.tempPassword}`);
+          console.log(`Stakeholder ID: ${newStakeholder.StakeholderID}`);
+          console.log('========================================\n');
+          
+          logger.info('Auto-created user account for stakeholder', 'StakeholderController', {
+            stakeholderId: newStakeholder.StakeholderID,
+            userAccountId: userAccount.UserAccountID,
+            email: newStakeholder.Email
+          });
+        }
+      } catch (accountError) {
+        // Log error but don't fail stakeholder creation
+        logger.error('Failed to auto-create user account', 'StakeholderController', null, accountError);
+        // Continue - stakeholder is created, account can be created manually
+      }
+    }
     
     res.status(201).json({
       success: true,
@@ -245,16 +303,17 @@ const updateStakeholder = async (req, res) => {
     const { id } = req.params;
     const stakeholderData = req.body;
     
-    // Validate ID
-    if (!id || isNaN(id)) {
+    // Validate GUID format
+    const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !guidRegex.test(id)) {
       return res.status(400).json({
         success: false,
-        message: 'Valid stakeholder ID is required'
+        message: 'Valid stakeholder ID (GUID) is required'
       });
     }
 
     // Check if stakeholder exists
-    const existingStakeholder = await Stakeholder.getById(parseInt(id));
+    const existingStakeholder = await Stakeholder.getById(id);
     if (!existingStakeholder) {
       return res.status(404).json({
         success: false,
@@ -277,17 +336,8 @@ const updateStakeholder = async (req, res) => {
       });
     }
 
-    // Validate stakeholder type if provided
-    if (stakeholderData.Type) {
-      const validTypes = ['Resident', 'Company Employee', 'Vendor', 'Other'];
-      if (!validTypes.includes(stakeholderData.Type)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid stakeholder type',
-          validTypes: validTypes
-        });
-      }
-    }
+    // Type validation removed - now using dynamic dropdowns from cor_DynamicDropChoices
+    // The database will store the text value (ChoiceValue) directly
 
     // Validate email format if provided
     if (stakeholderData.Email) {
@@ -321,11 +371,82 @@ const updateStakeholder = async (req, res) => {
       }
     }
 
+    // ============================================
+    // PORTAL ACCESS & EMAIL VALIDATION LOGIC
+    // ============================================
+    const UserAccount = require('../models/userAccount');
+    const { getCurrentOrganizationId } = require('../utils/organizationHelper');
+    const { getConnection } = require('../config/database');
+    const { sql } = require('../config/database');
+
+    // Check if email is changing
+    const emailChanged = stakeholderData.Email !== undefined && 
+                         stakeholderData.Email !== existingStakeholder.Email;
+    
+    // Check if portal access is being toggled
+    const portalAccessToggled = stakeholderData.PortalAccessEnabled !== undefined &&
+                                stakeholderData.PortalAccessEnabled !== existingStakeholder.PortalAccessEnabled;
+    
+    const portalAccessEnabled = stakeholderData.PortalAccessEnabled !== undefined 
+      ? stakeholderData.PortalAccessEnabled 
+      : existingStakeholder.PortalAccessEnabled;
+    
+    const newEmail = stakeholderData.Email !== undefined 
+      ? stakeholderData.Email 
+      : existingStakeholder.Email;
+
+    // Validate email uniqueness if email is changing
+    if (emailChanged && newEmail) {
+      // Check master database (UserAccounts)
+      const existingUserAccount = await UserAccount.findByEmailIncludingInactive(newEmail);
+      if (existingUserAccount) {
+        // If account exists but isn't linked to this stakeholder, we can link it
+        if (existingUserAccount.StakeholderID && existingUserAccount.StakeholderID !== id) {
+          return res.status(409).json({
+            success: false,
+            message: 'This email address is already in use by another account. Please use a different email address.'
+          });
+        }
+        // If account exists but isn't linked, we'll link it later
+      }
+
+      // Check client database (Stakeholders with portal access)
+      const pool = await getConnection();
+      const stakeholderCheck = await pool.request()
+        .input('Email', sql.NVarChar(255), newEmail)
+        .input('StakeholderID', sql.UniqueIdentifier, id)
+        .query(`
+          SELECT StakeholderID, Email, PortalAccessEnabled
+          FROM dbo.cor_Stakeholders
+          WHERE Email = @Email 
+            AND StakeholderID != @StakeholderID
+            AND PortalAccessEnabled = 1
+            AND IsActive = 1
+        `);
+      
+      if (stakeholderCheck.recordset.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'This email address is already in use by another stakeholder with portal access. Please use a different email address.'
+        });
+      }
+    }
+
+    // Validate email required when enabling portal access
+    if (portalAccessToggled && stakeholderData.PortalAccessEnabled && !newEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required when portal access is enabled'
+      });
+    }
+
     // Map controller field names to model field names
     const modelData = {};
     if (stakeholderData.Type !== undefined) modelData.Type = stakeholderData.Type;
     if (stakeholderData.SubType !== undefined) modelData.SubType = stakeholderData.SubType;
     if (stakeholderData.AccessLevel !== undefined) modelData.AccessLevel = stakeholderData.AccessLevel;
+    if (stakeholderData.Department !== undefined) modelData.Department = stakeholderData.Department;
+    if (stakeholderData.Title !== undefined) modelData.Title = stakeholderData.Title;
     if (stakeholderData.CommunityID !== undefined) modelData.CommunityID = stakeholderData.CommunityID;
     if (stakeholderData.FirstName !== undefined) modelData.FirstName = stakeholderData.FirstName;
     if (stakeholderData.LastName !== undefined) modelData.LastName = stakeholderData.LastName;
@@ -337,8 +458,145 @@ const updateStakeholder = async (req, res) => {
     if (stakeholderData.Status !== undefined) modelData.Status = stakeholderData.Status;
     if (stakeholderData.PortalAccessEnabled !== undefined) modelData.PortalAccessEnabled = stakeholderData.PortalAccessEnabled;
     if (stakeholderData.Notes !== undefined) modelData.Notes = stakeholderData.Notes;
+    
+    // Always set ModifiedBy from authenticated user
+    modelData.ModifiedBy = req.user?.stakeholderId || null;
+    
+    // Debug logging
+    logger.debug('Updating stakeholder', 'StakeholderController', {
+      stakeholderId: id,
+      modifiedBy: req.user?.stakeholderId,
+      userId: req.user?.userId,
+      hasUser: !!req.user
+    });
 
-    const updatedStakeholder = await Stakeholder.update(parseInt(id), modelData);
+    const updatedStakeholder = await Stakeholder.update(id, modelData);
+    
+    // ============================================
+    // HANDLE USER ACCOUNT OPERATIONS
+    // ============================================
+    try {
+      const organizationId = await getCurrentOrganizationId();
+      
+      if (!organizationId) {
+        logger.warn('Could not find organization ID for database', 'StakeholderController', {
+          stakeholderId: id
+        });
+      } else {
+        // Check if UserAccount exists for this stakeholder
+        let userAccount = await UserAccount.findByStakeholderId(id, true); // Include inactive
+        
+        // Handle Portal Access Toggle
+        if (portalAccessToggled) {
+          if (stakeholderData.PortalAccessEnabled) {
+            // Portal access enabled: create or reactivate account
+            if (userAccount) {
+              // Reactivate existing account
+              await UserAccount.reactivate(userAccount.UserAccountID);
+              
+              // Update email if it changed
+              if (emailChanged && newEmail) {
+                await UserAccount.updateEmail(userAccount.UserAccountID, newEmail);
+              }
+              
+              logger.info('Reactivated user account for stakeholder', 'StakeholderController', {
+                stakeholderId: id,
+                userAccountId: userAccount.UserAccountID,
+                email: newEmail
+              });
+            } else {
+              // Create new account
+              if (newEmail) {
+                // Check if account exists with this email (unlinked)
+                const existingAccountByEmail = await UserAccount.findByEmailIncludingInactive(newEmail);
+                if (existingAccountByEmail && !existingAccountByEmail.StakeholderID) {
+                  // Link existing account
+                  await UserAccount.linkToStakeholder(existingAccountByEmail.UserAccountID, id);
+                  await UserAccount.reactivate(existingAccountByEmail.UserAccountID);
+                  userAccount = existingAccountByEmail;
+                  
+                  logger.info('Linked existing user account to stakeholder', 'StakeholderController', {
+                    stakeholderId: id,
+                    userAccountId: existingAccountByEmail.UserAccountID,
+                    email: newEmail
+                  });
+                } else {
+                  // Create new account
+                  userAccount = await UserAccount.create({
+                    organizationId,
+                    email: newEmail,
+                    stakeholderId: id,
+                    firstName: updatedStakeholder.FirstName,
+                    lastName: updatedStakeholder.LastName
+                  });
+                  
+                  // Log temp password for dev (console)
+                  console.log('\n========================================');
+                  console.log('NEW USER ACCOUNT CREATED');
+                  console.log('========================================');
+                  console.log(`Email: ${userAccount.Email}`);
+                  console.log(`Temp Password: ${userAccount.tempPassword}`);
+                  console.log(`Stakeholder ID: ${id}`);
+                  console.log('========================================\n');
+                  
+                  logger.info('Created new user account for stakeholder', 'StakeholderController', {
+                    stakeholderId: id,
+                    userAccountId: userAccount.UserAccountID,
+                    email: newEmail
+                  });
+                }
+              }
+            }
+          } else {
+            // Portal access disabled: deactivate account (soft delete)
+            if (userAccount) {
+              await UserAccount.deactivate(userAccount.UserAccountID);
+              logger.info('Deactivated user account for stakeholder', 'StakeholderController', {
+                stakeholderId: id,
+                userAccountId: userAccount.UserAccountID
+              });
+            }
+          }
+        } else if (emailChanged && portalAccessEnabled && userAccount) {
+          // Email changed but portal access still enabled: update UserAccount email
+          await UserAccount.updateEmail(userAccount.UserAccountID, newEmail);
+          logger.info('Updated user account email for stakeholder', 'StakeholderController', {
+            stakeholderId: id,
+            userAccountId: userAccount.UserAccountID,
+            oldEmail: existingStakeholder.Email,
+            newEmail: newEmail
+          });
+        } else if (emailChanged && portalAccessEnabled && !userAccount && newEmail) {
+          // Email changed, portal access enabled, but no account exists: create one
+          userAccount = await UserAccount.create({
+            organizationId,
+            email: newEmail,
+            stakeholderId: id,
+            firstName: updatedStakeholder.FirstName,
+            lastName: updatedStakeholder.LastName
+          });
+          
+          // Log temp password for dev (console)
+          console.log('\n========================================');
+          console.log('NEW USER ACCOUNT CREATED (Email Change)');
+          console.log('========================================');
+          console.log(`Email: ${userAccount.Email}`);
+          console.log(`Temp Password: ${userAccount.tempPassword}`);
+          console.log(`Stakeholder ID: ${id}`);
+          console.log('========================================\n');
+          
+          logger.info('Created user account after email change', 'StakeholderController', {
+            stakeholderId: id,
+            userAccountId: userAccount.UserAccountID,
+            email: newEmail
+          });
+        }
+      }
+    } catch (accountError) {
+      // Log error but don't fail stakeholder update
+      logger.error('Failed to handle user account operations', 'StakeholderController', null, accountError);
+      // Continue - stakeholder is updated, account operations can be retried
+    }
     
     res.status(200).json({
       success: true,
@@ -360,16 +618,17 @@ const deleteStakeholder = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Validate ID
-    if (!id || isNaN(id)) {
+    // Validate GUID format
+    const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !guidRegex.test(id)) {
       return res.status(400).json({
         success: false,
-        message: 'Valid stakeholder ID is required'
+        message: 'Valid stakeholder ID (GUID) is required'
       });
     }
 
     // Check if stakeholder exists
-    const existingStakeholder = await Stakeholder.getById(parseInt(id));
+    const existingStakeholder = await Stakeholder.getById(id);
     if (!existingStakeholder) {
       return res.status(404).json({
         success: false,
@@ -377,7 +636,23 @@ const deleteStakeholder = async (req, res) => {
       });
     }
 
-    await Stakeholder.delete(parseInt(id));
+    await Stakeholder.delete(id);
+    
+    // Deactivate UserAccount if it exists (soft delete)
+    try {
+      const UserAccount = require('../models/userAccount');
+      const userAccount = await UserAccount.findByStakeholderId(id, true); // Include inactive
+      if (userAccount) {
+        await UserAccount.deactivate(userAccount.UserAccountID);
+        logger.info('Deactivated user account after stakeholder soft-delete', 'StakeholderController', {
+          stakeholderId: id,
+          userAccountId: userAccount.UserAccountID
+        });
+      }
+    } catch (accountError) {
+      // Log error but don't fail stakeholder deletion
+      logger.error('Failed to deactivate user account after stakeholder deletion', 'StakeholderController', null, accountError);
+    }
     
     res.status(200).json({
       success: true,
@@ -398,15 +673,16 @@ const getStakeholderWithProperties = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Validate ID
-    if (!id || isNaN(id)) {
+    // Validate GUID format
+    const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !guidRegex.test(id)) {
       return res.status(400).json({
         success: false,
-        message: 'Valid stakeholder ID is required'
+        message: 'Valid stakeholder ID (GUID) is required'
       });
     }
 
-    const stakeholderWithProperties = await Stakeholder.getStakeholderWithProperties(parseInt(id));
+    const stakeholderWithProperties = await Stakeholder.getStakeholderWithProperties(id);
     
     if (!stakeholderWithProperties || stakeholderWithProperties.length === 0) {
       return res.status(404).json({

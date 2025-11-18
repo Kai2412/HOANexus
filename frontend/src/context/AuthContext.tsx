@@ -3,26 +3,33 @@ import { logger } from '../services/logger';
 import api from '../services/api';
 
 export interface User {
-  id: number;
+  id: string; // Changed to string (GUID)
   username: string;
-  stakeholderId: number;
+  stakeholderId: string | null; // Changed to string (GUID) and nullable
+  organizationId?: string; // Added
+  databaseName?: string; // Added
   // Stakeholder info
-  type: string;
-  subType?: string;
-  accessLevel?: string;
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  communityId?: number;
+  type: string | null;
+  subType?: string | null;
+  accessLevel?: string | null;
+  department?: string | null;
+  title?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  communityId?: number | null;
   portalAccessEnabled: boolean;
+  mustChangePassword?: boolean; // Added
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  mustChangePassword: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   checkPermission: (action: string, resource?: string) => boolean;
 }
 
@@ -37,6 +44,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const isAuthenticated = !!user;
+  const mustChangePassword = user?.mustChangePassword || false;
 
   // Check for existing token on app load
   useEffect(() => {
@@ -58,18 +66,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         message: string;
         token: string;
         user: User;
+        mustChangePassword?: boolean;
       }>('/auth/login', { username, password });
       
       // Store token
       localStorage.setItem('authToken', response.token);
       
-      // Set user data
-      setUser(response.user);
+      // Set user data (include mustChangePassword from response)
+      const userData = {
+        ...response.user,
+        mustChangePassword: response.mustChangePassword || response.user.mustChangePassword || false
+      };
+      setUser(userData);
       
       // Dispatch event to reset app state on login
       window.dispatchEvent(new CustomEvent('auth:login'));
       
-      logger.info('Login successful', 'AuthContext', { userId: response.user.id });
+      logger.info('Login successful', 'AuthContext', { 
+        userId: userData.id,
+        mustChangePassword: userData.mustChangePassword 
+      });
     } catch (error) {
       logger.error('Login failed', 'AuthContext', { username }, error as Error);
       throw error;
@@ -85,6 +101,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     // Dispatch event to reset app state
     window.dispatchEvent(new CustomEvent('auth:logout'));
+  };
+
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+    try {
+      logger.info('Changing password', 'AuthContext', { userId: user?.id });
+      
+      await api.put('/auth/change-password', {
+        currentPassword,
+        newPassword
+      });
+      
+      // Update user to clear mustChangePassword flag
+      if (user) {
+        setUser({
+          ...user,
+          mustChangePassword: false
+        });
+      }
+      
+      logger.info('Password changed successfully', 'AuthContext', { userId: user?.id });
+    } catch (error) {
+      logger.error('Password change failed', 'AuthContext', { userId: user?.id }, error as Error);
+      throw error;
+    }
   };
 
   const checkPermission = (action: string, resource?: string): boolean => {
@@ -138,8 +178,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       user,
       isAuthenticated,
       isLoading,
+      mustChangePassword,
       login,
       logout,
+      changePassword,
       checkPermission
     }}>
       {children}

@@ -1,23 +1,15 @@
-import React, { useState } from 'react';
-import { 
-  BuildingOfficeIcon, 
-  DocumentTextIcon, 
-  ClockIcon, 
-  CogIcon,
-  PencilIcon
-} from '@heroicons/react/24/outline';
-import type { Community } from '../../types';
-import { getCommunityStatusColor, getCommunityTypeColor, getCommunityStatusColorName, getCommunityTypeColorName } from '../../utils/statusColors';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BuildingOfficeIcon, DocumentTextIcon, ClockIcon, CogIcon, PencilIcon, UserGroupIcon } from '@heroicons/react/24/outline';
+import type { Community, UpdateCommunityData } from '../../types';
+import { getCommunityStatusColor, getCommunityStatusColorName, getCommunityTypeColor, getCommunityTypeColorName } from '../../utils/statusColors';
 import { CommunitySearchBar, SearchResultsIndicator } from '../CommunitySearchBar';
 import { useCommunitySearch } from '../../hooks/useCommunitySearch';
 import EditModal from '../EditModal';
 import type { FieldConfig } from '../EditModal';
 import dataService from '../../services/dataService';
-import ManagementTeam from '../ManagementTeam';
 
 interface CommunityInfoProps {
   community: Community;
-  communities: Community[];
   onCommunityUpdate?: (updatedCommunity: Community) => void;
 }
 
@@ -25,9 +17,8 @@ interface InfoCardProps {
   title: string;
   icon: React.ReactNode;
   children: React.ReactNode;
-  onEdit?: () => void;
-  canEdit?: boolean;
   highlightClass?: string;
+  onEdit?: () => void;
 }
 
 interface InfoRowProps {
@@ -37,7 +28,21 @@ interface InfoRowProps {
   chipColor?: 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'purple' | 'orange';
 }
 
-const InfoCard: React.FC<InfoCardProps> = ({ title, icon, children, onEdit, canEdit = false, highlightClass = "" }) => (
+type ChoiceOption = {
+  value: string;
+  label: string;
+  isDefault?: boolean;
+};
+
+const CHOICE_COLUMNS_BY_CARD: Record<'basic' | 'geographic' | 'legal' | 'contract' | 'system', string[]> = {
+  basic: ['ClientType', 'ServiceType', 'ManagementType', 'DevelopmentStage', 'CommunityStatus'],
+  geographic: [],
+  legal: ['AcquisitionType'],
+  contract: [],
+  system: []
+};
+
+const InfoCard: React.FC<InfoCardProps> = ({ title, icon, children, highlightClass = '', onEdit }) => (
   <div className={`bg-surface rounded-lg shadow-sm border border-primary theme-transition ${highlightClass}`}>
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
@@ -45,32 +50,25 @@ const InfoCard: React.FC<InfoCardProps> = ({ title, icon, children, onEdit, canE
           <div className="text-royal-600 dark:text-royal-400">{icon}</div>
           <h3 className="text-lg font-semibold text-primary">{title}</h3>
         </div>
-        {canEdit && onEdit && (
+        {onEdit && (
           <button
+            type="button"
             onClick={onEdit}
-            className="p-2 text-gray-400 hover:text-royal-600 dark:hover:text-royal-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-            title={`Edit ${title}`}
+            className="p-2 rounded-md text-tertiary hover:text-royal-600 dark:hover:text-royal-400 hover:bg-royal-50 dark:hover:bg-royal-900/20 transition-colors"
+            aria-label={`Edit ${title}`}
           >
-            <PencilIcon className="h-4 w-4" />
+            <PencilIcon className="w-5 h-5" />
           </button>
         )}
       </div>
       <hr className="mb-4 border-primary" />
-      <div className="space-y-3">
-        {children}
-      </div>
+      <div className="space-y-3">{children}</div>
     </div>
   </div>
 );
 
-const InfoRow: React.FC<InfoRowProps> = ({ 
-  label, 
-  value, 
-  chip = false, 
-  chipColor = 'gray' 
-}) => {
-  const displayValue = value || 'Not Available';
-  
+const InfoRow: React.FC<InfoRowProps> = ({ label, value, chip = false, chipColor = 'gray' }) => {
+  const displayValue = value ?? 'Not Available';
   const chipColors = {
     blue: 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200',
     green: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200',
@@ -85,759 +83,718 @@ const InfoRow: React.FC<InfoRowProps> = ({
     <div className="flex justify-between items-center">
       <span className="text-sm font-medium text-secondary">{label}:</span>
       {chip ? (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium theme-transition ${chipColors[chipColor]}`}>
-          {displayValue}
-        </span>
+        <span className={`px-2 py-1 rounded-full text-xs font-medium theme-transition ${chipColors[chipColor]}`}>{displayValue}</span>
       ) : (
-        <span className="text-sm font-semibold text-primary text-right">
-          {displayValue}
-        </span>
+        <span className="text-sm font-semibold text-primary text-right break-words">{displayValue}</span>
       )}
     </div>
   );
 };
 
-const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, communities, onCommunityUpdate }) => {
+const formatDate = (value: string | null | undefined) => {
+  if (!value) return 'Not Set';
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf())
+    ? 'Invalid Date'
+    : date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const formatChipValue = (text: string | null | undefined) => text ?? 'Unknown';
+
+const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpdate }) => {
+  const statusValue = community.communityStatus ?? (community.active ? 'Active' : 'Inactive');
+  const clientTypeValue = community.clientType ?? 'Unknown';
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingCard, setEditingCard] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [editingCard, setEditingCard] = useState<'basic' | 'geographic' | 'legal' | 'contract' | 'system' | null>(null);
+  const [modalInitialData, setModalInitialData] = useState<Record<string, any>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [choiceOptions, setChoiceOptions] = useState<Record<string, ChoiceOption[]>>({});
+  const [isChoiceLoading, setIsChoiceLoading] = useState(false);
+  const activeChoiceColumns = editingCard ? CHOICE_COLUMNS_BY_CARD[editingCard] ?? [] : [];
+  const searchableData = useMemo(() => {
+    const addField = (
+      labels: string[],
+      fieldLabel: string,
+      value: string | number | boolean | null | undefined
+    ) => {
+      const normalizedLabel = fieldLabel.trim();
+      if (normalizedLabel) {
+        labels.push(normalizedLabel);
+      }
 
-  const formatStatus = (status: string | undefined): string => {
-    if (!status) return 'Unknown';
-    
-    switch (status.toLowerCase()) {
-      case 'indevelopment':
-        return 'In Development';
-      case 'underconstruction':
-        return 'Under Construction';
-      case 'active':
-        return 'Active';
-      case 'inactive':
-        return 'Inactive';
-      case 'transition':
-        return 'Transition';
-      default:
-        // For any other status, add spaces and capitalize properly
-        return status
-          .replace(/([A-Z])/g, ' $1')
-          .trim()
-          .split(' ')
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-          .join(' ');
-    }
-  };
+      if (value === null || value === undefined) return;
 
-  const formatCommunityType = (type: string | undefined): string => {
-    if (!type) return 'Unknown';
-    
-    switch (type.toLowerCase()) {
-      case 'masterplanned':
-        return 'Master Planned';
-      case 'singlefamily':
-        return 'Single Family';
-      case 'townhome':
-        return 'Town Home';
-      case 'condominium':
-        return 'Condominium';
-      case 'mixeduse':
-        return 'Mixed Use';
-      default:
-        // For any other type, add spaces and capitalize properly
-        return type
-          .replace(/([A-Z])/g, ' $1')
-          .trim()
-          .split(' ')
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-          .join(' ');
-    }
-  };
+      const text = String(value).trim();
+      if (!text) return;
 
-  const [formData, setFormData] = useState<Record<string, any>>({});
+      labels.push(text);
+      if (normalizedLabel) {
+        labels.push(`${normalizedLabel}: ${text}`);
+      }
+    };
 
-  // Prepare searchable data from community - separate entries for each card
-  const searchableData = React.useMemo(() => {
-    if (!community) return [];
-    
+    const basicLabels: string[] = [];
+    addField(basicLabels, 'Community Code', community.propertyCode);
+    addField(basicLabels, 'Display Name', community.displayName);
+    addField(basicLabels, 'Legal Name', community.legalName);
+    addField(basicLabels, 'Client Type', formatChipValue(clientTypeValue));
+    addField(basicLabels, 'Service Type', community.serviceType);
+    addField(basicLabels, 'Management Type', community.managementType);
+    addField(basicLabels, 'Development Stage', community.developmentStage);
+    addField(basicLabels, 'Community Status', formatChipValue(statusValue));
+    addField(basicLabels, 'Built Out Units', community.builtOutUnits);
+    addField(basicLabels, 'Market', community.market);
+    addField(basicLabels, 'Office', community.office);
+    addField(basicLabels, 'Preferred Contact Info', community.preferredContactInfo);
+    addField(basicLabels, 'Website', community.website);
+
+    const geographicLabels: string[] = [];
+    addField(geographicLabels, 'Address Line 1', community.addressLine1);
+    addField(geographicLabels, 'Address Line 2', community.addressLine2);
+    addField(geographicLabels, 'City', community.city);
+    addField(geographicLabels, 'State', community.state);
+    addField(geographicLabels, 'Postal Code', community.postalCode);
+
+    const legalLabels: string[] = [];
+    addField(legalLabels, 'Legal Name', community.legalName);
+    addField(legalLabels, 'Tax ID', community.taxId);
+    addField(legalLabels, 'State Tax ID', community.stateTaxId);
+    addField(legalLabels, 'SOS File Number', community.sosFileNumber);
+    addField(legalLabels, 'Tax Return Type', community.taxReturnType);
+    addField(legalLabels, 'Acquisition Type', community.acquisitionType);
+
+    const contractLabels: string[] = [];
+    addField(contractLabels, 'Contract Start', formatDate(community.contractStart));
+    addField(contractLabels, 'Contract End', formatDate(community.contractEnd));
+
+    const systemLabels: string[] = [];
+    addField(systemLabels, 'Record ID', community.id);
+    addField(systemLabels, 'Third Party Identifier', community.thirdPartyIdentifier);
+    addField(systemLabels, 'Active', community.active ? 'Active' : 'Inactive');
+    addField(systemLabels, 'Created On', formatDate(community.createdOn));
+    addField(systemLabels, 'Created By', community.createdByName || community.createdBy || 'Not available');
+    addField(systemLabels, 'Last Modified On', formatDate(community.modifiedOn));
+    addField(systemLabels, 'Last Modified By', community.modifiedByName || community.modifiedBy || 'Not available');
+
     return [
+      { id: 'basic', labels: basicLabels },
+      { id: 'geographic', labels: geographicLabels },
+      { id: 'legal', labels: legalLabels },
+      { id: 'contracts', labels: contractLabels },
+      { id: 'system', labels: systemLabels }
+    ];
+  }, [community, statusValue, clientTypeValue]);
+
+  const { searchTerm, searchResults, isSearching, search, clearSearch, getCardHighlightClass } = useCommunitySearch({
+    data: searchableData.map((entry) => ({
+      ...entry,
+      labels: entry.labels.map((label: string) => label.toString())
+    }))
+  });
+
+  useEffect(() => {
+    if (!isEditModalOpen || !editingCard) {
+      return;
+    }
+
+    const columnsForCard = CHOICE_COLUMNS_BY_CARD[editingCard] ?? [];
+    if (columnsForCard.length === 0) {
+      return;
+    }
+
+    const missingColumns = columnsForCard.filter((column) => choiceOptions[column] === undefined);
+    if (missingColumns.length === 0) {
+      return;
+    }
+
+    // Map column names to GroupIDs
+    const columnToGroupId: Record<string, string> = {
+      'ClientType': 'client-types',
+      'ServiceType': 'service-types',
+      'ManagementType': 'management-types',
+      'DevelopmentStage': 'development-stages',
+      'AcquisitionType': 'acquisition-types',
+      'CommunityStatus': 'status' // Assuming CommunityStatus maps to the status group
+    };
+
+    // Get GroupIDs for missing columns
+    const groupIds = missingColumns
+      .map((column) => columnToGroupId[column])
+      .filter((groupId): groupId is string => groupId !== undefined);
+
+    if (groupIds.length === 0) {
+      return;
+    }
+
+    let isCancelled = false;
+    setIsChoiceLoading(true);
+
+    dataService
+      .getDynamicDropChoices(groupIds)
+      .then((response) => {
+        if (isCancelled) return;
+        setChoiceOptions((prev) => {
+          const next = { ...prev };
+          // Map response back to column names
+          missingColumns.forEach((column) => {
+            const groupId = columnToGroupId[column];
+            if (groupId && response[groupId]) {
+              next[column] = response[groupId].map((choice) => ({
+                value: choice.ChoiceValue,
+                label: choice.ChoiceValue,
+                isDefault: choice.IsDefault
+              }));
+            } else {
+              next[column] = [];
+            }
+          });
+          return next;
+        });
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          console.error('Failed to load dynamic drop choices', error);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsChoiceLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isEditModalOpen, editingCard, choiceOptions]);
+
+  const buildOptions = (column: string): { value: string; label: string }[] => {
+    const dynamic = choiceOptions[column];
+    if (!dynamic) {
+      return [];
+    }
+    return dynamic.map((choice) => ({ value: choice.value, label: choice.label }));
+  };
+
+  const hasOptions = (column: string): boolean =>
+    Array.isArray(choiceOptions[column]) && choiceOptions[column]!.length > 0;
+
+  const getPlaceholderText = (column: string, label: string) => {
+    if (isChoiceLoading && activeChoiceColumns.includes(column) && choiceOptions[column] === undefined) {
+      return `Loading ${label} options...`;
+    }
+    return hasOptions(column) ? `Select ${label}` : `No ${label} choices configured`;
+  };
+
+  const getFieldConfig = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system'): FieldConfig[] => {
+    if (card === 'basic') {
+      return [
       {
-        id: 'basic',
-        labels: [
-          'Community Code', 'Display Name', 'Community Type', 
-          'Total Units', 'Status', 'Sub Association', 'Master Association'
-        ]
+        key: 'PropertyCode',
+        label: 'Community Code',
+        type: 'text',
+        placeholder: 'Enter community code'
       },
       {
-        id: 'geographic',
-        labels: [
-          'State', 'City', 'Address Line 1', 'Address Line 2', 
-          'Postal Code', 'Country', 'Address', 'Location', 'Zip Code'
-        ]
+        key: 'DisplayName',
+        label: 'Display Name',
+        type: 'text',
+        required: true,
+        placeholder: 'Enter display name'
       },
       {
-        id: 'legal',
-        labels: [
-          'Legal Name', 'Tax ID', 'Formation Date'
-        ]
+        key: 'LegalName',
+        label: 'Legal Name',
+        type: 'text',
+        placeholder: 'Enter legal name'
       },
       {
-        id: 'contract',
-        labels: [
-          'Contract Start', 'Contract End', 'Fiscal Year Start', 'Fiscal Year End'
-        ]
+        key: 'ClientType',
+        label: 'Client Type',
+        type: 'select',
+        required: true,
+        options: buildOptions('ClientType'),
+        placeholder: getPlaceholderText('ClientType', 'Client Type')
       },
       {
-        id: 'system',
-        labels: [
-          'Time Zone', 'Data Completeness', 'Last Updated', 
-          'Created Date', 'Record ID', 'Last Audit Date', 'Next Audit Due'
-        ]
+        key: 'ServiceType',
+        label: 'Service Type',
+        type: 'select',
+        options: buildOptions('ServiceType'),
+        placeholder: getPlaceholderText('ServiceType', 'Service Type')
       },
       {
-        id: 'management',
-        labels: [
-          'Management Team', 'Director', 'Manager', 'Assistant', 'Regional Director',
-          'Community Manager', 'On-site Manager', 'Manager in Training',
-          'Maintenance Coordinator', 'Compliance Specialist', 'Accounting Specialist',
-          'General Assistant', 'Staff', 'Team', 'Personnel', 'Assignments',
-          'Roles', 'Leadership', 'Management', 'Team Members'
-        ]
+        key: 'ManagementType',
+        label: 'Management Type',
+        type: 'select',
+        options: buildOptions('ManagementType'),
+        placeholder: getPlaceholderText('ManagementType', 'Management Type')
+      },
+      {
+        key: 'DevelopmentStage',
+        label: 'Development Stage',
+        type: 'select',
+        options: buildOptions('DevelopmentStage'),
+        placeholder: getPlaceholderText('DevelopmentStage', 'Development Stage')
+      },
+      {
+        key: 'CommunityStatus',
+        label: 'Community Status',
+        type: 'select',
+        options: buildOptions('CommunityStatus'),
+        placeholder: getPlaceholderText('CommunityStatus', 'Community Status')
+      },
+      {
+        key: 'BuiltOutUnits',
+        label: 'Built Out Units',
+        type: 'number',
+        placeholder: 'Enter number of units'
+      },
+      {
+        key: 'Market',
+        label: 'Market',
+        type: 'text',
+        placeholder: 'Enter market name'
+      },
+      {
+        key: 'Office',
+        label: 'Office',
+        type: 'text',
+        placeholder: 'Enter office'
+      },
+      {
+        key: 'PreferredContactInfo',
+        label: 'Preferred Contact Info',
+        type: 'text',
+        placeholder: 'Enter preferred contact info'
+      },
+      {
+        key: 'Website',
+        label: 'Website',
+        type: 'text',
+        placeholder: 'https://example.com'
       }
     ];
-  }, [community]);
-
-  // Initialize search functionality
-  const {
-    searchTerm,
-    searchResults,
-    isSearching,
-    search,
-    clearSearch,
-    getCardHighlightClass
-  } = useCommunitySearch({ data: searchableData });
-
-  if (!community) {
-    return (
-      <div className="p-8 text-center">
-        <h3 className="text-lg font-medium text-secondary">
-          Select a community to view information
-        </h3>
-      </div>
-    );
-  }
-
-  const formatDate = (dateString: string | null | undefined): string => {
-    if (!dateString) return 'Not Set';
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-    } catch {
-      return 'Invalid Date';
     }
+
+    if (card === 'geographic') {
+      return [
+        {
+          key: 'AddressSearch',
+          label: 'Search Address',
+          type: 'places-autocomplete',
+          placeholder: 'Search for an address'
+        },
+        {
+          key: 'Address',
+          label: 'Address Line 1',
+          type: 'text',
+          required: true,
+          placeholder: 'Enter street address'
+        },
+        {
+          key: 'Address2',
+          label: 'Address Line 2',
+          type: 'text',
+          placeholder: 'Apartment, suite, etc. (optional)'
+        },
+        {
+          key: 'City',
+          label: 'City',
+          type: 'text',
+          required: true,
+          placeholder: 'Enter city'
+        },
+        {
+          key: 'State',
+          label: 'State',
+          type: 'text',
+          required: true,
+          placeholder: 'Enter state abbreviation (e.g., CA)'
+        },
+        {
+          key: 'Zipcode',
+          label: 'Postal Code',
+          type: 'text',
+          required: true,
+          placeholder: 'Enter postal code'
+        }
+      ];
+    }
+
+    if (card === 'legal') {
+      return [
+        {
+          key: 'TaxID',
+          label: 'Tax ID',
+          type: 'text',
+          placeholder: 'Enter tax ID'
+        },
+        {
+          key: 'StateTaxID',
+          label: 'State Tax ID',
+          type: 'text',
+          placeholder: 'Enter state tax ID'
+        },
+        {
+          key: 'SOSFileNumber',
+          label: 'SOS File Number',
+          type: 'text',
+          placeholder: 'Enter SOS file number'
+        },
+        {
+          key: 'TaxReturnType',
+          label: 'Tax Return Type',
+          type: 'text',
+          placeholder: 'Enter tax return type'
+        },
+        {
+          key: 'AcquisitionType',
+          label: 'Acquisition Type',
+          type: 'select',
+          options: buildOptions('AcquisitionType'),
+          placeholder: getPlaceholderText('AcquisitionType', 'Acquisition Type')
+        }
+      ];
+    }
+
+    if (card === 'contract') {
+      return [
+        {
+          key: 'ContractStart',
+          label: 'Contract Start',
+          type: 'date'
+        },
+        {
+          key: 'ContractEnd',
+          label: 'Contract End',
+          type: 'date'
+        }
+      ];
+    }
+
+    if (card === 'system') {
+      return [
+        {
+          key: 'Active',
+          label: 'Active',
+          type: 'boolean'
+        },
+        {
+          key: 'ThirdPartyIdentifier',
+          label: 'Third Party Identifier',
+          type: 'text',
+          placeholder: 'Enter third party identifier'
+        }
+      ];
+    }
+
+    return [];
   };
 
-
-  const formatStatusDisplay = (status: string | undefined): string => {
-    switch (status?.toLowerCase()) {
-      case 'active': return 'Active';
-      case 'indevelopment': return 'In Development';
-      case 'transition': return 'Transition';
-      case 'terminated': return 'Terminated';
-      default: return status || 'Unknown';
+  const getInitialData = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system'): Record<string, any> => {
+    if (card === 'basic') {
+      return {
+        PropertyCode: community.propertyCode ?? '',
+        DisplayName: community.displayName ?? '',
+        LegalName: community.legalName ?? '',
+        ClientType: community.clientType ?? '',
+        ServiceType: community.serviceType ?? '',
+        ManagementType: community.managementType ?? '',
+        DevelopmentStage: community.developmentStage ?? '',
+        CommunityStatus: community.communityStatus ?? '',
+        BuiltOutUnits: community.builtOutUnits ?? '',
+        Market: community.market ?? '',
+        Office: community.office ?? '',
+        PreferredContactInfo: community.preferredContactInfo ?? '',
+        Website: community.website ?? ''
+      };
     }
+
+    if (card === 'geographic') {
+      return {
+        AddressSearch: community.addressLine1 ?? '',
+        Address: community.addressLine1 ?? '',
+        Address2: community.addressLine2 ?? '',
+        City: community.city ?? '',
+        State: community.state ?? '',
+        Zipcode: community.postalCode ?? ''
+      };
+    }
+
+    if (card === 'legal') {
+      return {
+        TaxID: community.taxId ?? '',
+        StateTaxID: community.stateTaxId ?? '',
+        SOSFileNumber: community.sosFileNumber ?? '',
+        TaxReturnType: community.taxReturnType ?? '',
+        AcquisitionType: community.acquisitionType ?? ''
+      };
+    }
+
+    if (card === 'contract') {
+      return {
+        ContractStart: community.contractStart ?? '',
+        ContractEnd: community.contractEnd ?? ''
+      };
+    }
+
+    if (card === 'system') {
+      return {
+        Active: community.active ?? false,
+        ThirdPartyIdentifier: community.thirdPartyIdentifier ?? ''
+      };
+    }
+
+    return {};
   };
 
-  // Edit handlers
-  const handleEditCard = (cardType: string) => {
-    setEditingCard(cardType);
-    setFormData(getInitialData(cardType));
+  const openEditModal = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system') => {
+    setEditingCard(card);
+    setModalInitialData(getInitialData(card));
     setIsEditModalOpen(true);
   };
 
-  const handleCloseModal = () => {
+  const closeEditModal = () => {
     setIsEditModalOpen(false);
     setEditingCard(null);
+    setModalInitialData({});
   };
 
-  const handleSave = async (data: Record<string, any>) => {
-    setIsLoading(true);
+  const handleSave = async (formValues: Record<string, any>) => {
+    if (!editingCard) return;
+
+    const normalizeString = (value: any): string | null => {
+      if (value === null || value === undefined) return null;
+      const trimmed = String(value).trim();
+      return trimmed === '' ? null : trimmed;
+    };
+
+    const toNumberOrNull = (value: any): number | null => {
+      if (value === '' || value === null || value === undefined) {
+        return null;
+      }
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
     try {
-      console.log('Saving data for', editingCard, ':', data);
-      
-      // Prepare the data for the API call
-      const updateData: Record<string, any> = {};
-      
-      // Map frontend field names to database field names
-      switch (editingCard) {
-        case 'basic':
-          updateData.Pcode = data.pcode;
-          updateData.DisplayName = data.displayName;
-          updateData.CommunityType = data.communityType;
-          updateData.Status = data.status;
-          updateData.IsSubAssociation = data.isSubAssociation === 'true';
-          updateData.MasterAssociation = data.parentAssociation;
-          break;
-        case 'geographic':
-          // Exclude addressSearch from database save (it's just for UI)
-          updateData.State = data.state;
-          updateData.City = data.city;
-          updateData.AddressLine1 = data.addressLine1;
-          updateData.AddressLine2 = data.addressLine2;
-          updateData.PostalCode = data.postalCode;
-          updateData.Country = data.country;
-          break;
-        case 'legal':
-          updateData.Name = data.legalName; // Map legalName to Name in database
-          updateData.TaxId = data.taxId;
-          updateData.FormationDate = data.formationDate;
-          break;
-        case 'contract':
-          updateData.ContractStartDate = data.contractStartDate;
-          updateData.ContractEndDate = data.contractEndDate;
-          updateData.FiscalYearStart = data.fiscalYearStart;
-          updateData.FiscalYearEnd = data.fiscalYearEnd;
-          break;
-        case 'system':
-          updateData.TimeZone = data.timeZone;
-          updateData.LastAuditDate = data.lastAuditDate;
-          updateData.NextAuditDate = data.nextAuditDate;
-          break;
-        default:
-          throw new Error(`Unknown card type: ${editingCard}`);
+      setIsSaving(true);
+
+      let updatedCommunity: Community | undefined;
+
+      if (editingCard === 'basic') {
+        const payload: UpdateCommunityData = {
+          PropertyCode: normalizeString(formValues.PropertyCode),
+          DisplayName: normalizeString(formValues.DisplayName),
+          LegalName: normalizeString(formValues.LegalName),
+          ClientType: normalizeString(formValues.ClientType),
+          ServiceType: normalizeString(formValues.ServiceType),
+          ManagementType: normalizeString(formValues.ManagementType),
+          DevelopmentStage: normalizeString(formValues.DevelopmentStage),
+          CommunityStatus: normalizeString(formValues.CommunityStatus),
+          BuiltOutUnits: toNumberOrNull(formValues.BuiltOutUnits),
+          Market: normalizeString(formValues.Market),
+          Office: normalizeString(formValues.Office),
+          PreferredContactInfo: normalizeString(formValues.PreferredContactInfo),
+          Website: normalizeString(formValues.Website)
+        };
+
+        updatedCommunity = await dataService.updateCommunity(community.id, payload);
+      } else if (editingCard === 'geographic') {
+        const stateValue = normalizeString(formValues.State);
+
+        const payload: UpdateCommunityData = {
+          Address: normalizeString(formValues.Address),
+          Address2: normalizeString(formValues.Address2),
+          City: normalizeString(formValues.City),
+          State: stateValue ? stateValue.toUpperCase() : null,
+          Zipcode: normalizeString(formValues.Zipcode)
+        };
+
+        updatedCommunity = await dataService.updateCommunity(community.id, payload);
+      } else if (editingCard === 'legal') {
+        const payload: UpdateCommunityData = {
+          TaxID: normalizeString(formValues.TaxID),
+          StateTaxID: normalizeString(formValues.StateTaxID),
+          SOSFileNumber: normalizeString(formValues.SOSFileNumber),
+          TaxReturnType: normalizeString(formValues.TaxReturnType),
+          AcquisitionType: normalizeString(formValues.AcquisitionType)
+        };
+
+        updatedCommunity = await dataService.updateCommunity(community.id, payload);
+      } else if (editingCard === 'contract') {
+        const payload: UpdateCommunityData = {
+          ContractStart: formValues.ContractStart || null,
+          ContractEnd: formValues.ContractEnd || null
+        };
+
+        updatedCommunity = await dataService.updateCommunity(community.id, payload);
+      } else if (editingCard === 'system') {
+        const payload: UpdateCommunityData = {
+          Active: Boolean(formValues.Active),
+          ThirdPartyIdentifier: normalizeString(formValues.ThirdPartyIdentifier)
+        };
+
+        updatedCommunity = await dataService.updateCommunity(community.id, payload);
       }
-      
-      // Call the API to update the community
-      const requestData = {
-        id: community.id,
-        ...updateData
-      };
-      
-      
-      const response = await dataService.updateCommunity(community.id, requestData);
-      
-      if (response.success) {
-        // Refresh the community data to show updated information
-        try {
-          const updatedCommunity = await dataService.getCommunityById(community.id);
-          
-          // Notify parent component of the update
-          if (onCommunityUpdate) {
-            onCommunityUpdate(updatedCommunity);
-          }
-        } catch (refreshError) {
-          console.error('Failed to refresh community data:', refreshError);
-          // Don't throw here - the save was successful, just the refresh failed
-        }
-      } else {
-        throw new Error(response.message || 'Failed to update community');
+
+      if (updatedCommunity) {
+        onCommunityUpdate?.(updatedCommunity);
       }
-      
-    } catch (error) {
-      console.error('Save failed:', error);
-      throw error;
+
+      closeEditModal();
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
-  // Field configurations for each card
-  const getFieldConfig = (cardType: string): FieldConfig[] => {
-    switch (cardType) {
-      case 'basic':
-        return [
-          {
-            key: 'pcode',
-            label: 'Community Code',
-            type: 'text',
-            required: true,
-            placeholder: 'Enter community code'
-          },
-          {
-            key: 'displayName',
-            label: 'Display Name',
-            type: 'text',
-            required: true,
-            placeholder: 'Enter display name'
-          },
-          {
-            key: 'communityType',
-            label: 'Community Type',
-            type: 'select',
-            required: true,
-            options: [
-              { value: 'SingleFamily', label: 'Single Family' },
-              { value: 'Condo', label: 'Condominium' },
-              { value: 'TownHome', label: 'Town Home' },
-              { value: 'MasterPlanned', label: 'Master Planned' },
-              { value: 'MixedUse', label: 'Mixed Use' }
-            ]
-          },
-          {
-            key: 'status',
-            label: 'Status',
-            type: 'select',
-            required: true,
-            options: [
-              { value: '', label: 'Select Status' },
-              { value: 'Active', label: 'Active' },
-              { value: 'InDevelopment', label: 'In Development' },
-              { value: 'Transition', label: 'Transition' },
-              { value: 'Terminated', label: 'Terminated' }
-            ]
-          },
-          {
-            key: 'isSubAssociation',
-            label: 'Sub Association',
-            type: 'select',
-            required: false,
-            options: [
-              { value: 'false', label: 'No' },
-              { value: 'true', label: 'Yes' }
-            ]
-          },
-          {
-            key: 'parentAssociation',
-            label: 'Master Association',
-            type: 'select-with-input',
-            required: false,
-            placeholder: 'Enter master association name',
-            conditional: {
-              dependsOn: 'isSubAssociation',
-              showWhen: 'true'
-            },
-            options: [
-              { value: '', label: 'Select Master Association' },
-              ...communities
-                .filter(c => c.id !== community.id) // Exclude current community
-                .map(c => ({ value: c.displayName || c.name, label: c.displayName || c.name }))
-            ]
-          }
-        ];
-      case 'geographic':
-        return [
-          {
-            key: 'addressSearch',
-            label: 'Search Address',
-            type: 'places-autocomplete',
-            placeholder: 'Type to search addresses...',
-            required: false
-          },
-          {
-            key: 'state',
-            label: 'State',
-            type: 'select',
-            required: false,
-            options: [
-              { value: '', label: 'Select State' },
-              { value: 'AL', label: 'Alabama (AL)' },
-              { value: 'AK', label: 'Alaska (AK)' },
-              { value: 'AZ', label: 'Arizona (AZ)' },
-              { value: 'AR', label: 'Arkansas (AR)' },
-              { value: 'CA', label: 'California (CA)' },
-              { value: 'CO', label: 'Colorado (CO)' },
-              { value: 'CT', label: 'Connecticut (CT)' },
-              { value: 'DE', label: 'Delaware (DE)' },
-              { value: 'FL', label: 'Florida (FL)' },
-              { value: 'GA', label: 'Georgia (GA)' },
-              { value: 'HI', label: 'Hawaii (HI)' },
-              { value: 'ID', label: 'Idaho (ID)' },
-              { value: 'IL', label: 'Illinois (IL)' },
-              { value: 'IN', label: 'Indiana (IN)' },
-              { value: 'IA', label: 'Iowa (IA)' },
-              { value: 'KS', label: 'Kansas (KS)' },
-              { value: 'KY', label: 'Kentucky (KY)' },
-              { value: 'LA', label: 'Louisiana (LA)' },
-              { value: 'ME', label: 'Maine (ME)' },
-              { value: 'MD', label: 'Maryland (MD)' },
-              { value: 'MA', label: 'Massachusetts (MA)' },
-              { value: 'MI', label: 'Michigan (MI)' },
-              { value: 'MN', label: 'Minnesota (MN)' },
-              { value: 'MS', label: 'Mississippi (MS)' },
-              { value: 'MO', label: 'Missouri (MO)' },
-              { value: 'MT', label: 'Montana (MT)' },
-              { value: 'NE', label: 'Nebraska (NE)' },
-              { value: 'NV', label: 'Nevada (NV)' },
-              { value: 'NH', label: 'New Hampshire (NH)' },
-              { value: 'NJ', label: 'New Jersey (NJ)' },
-              { value: 'NM', label: 'New Mexico (NM)' },
-              { value: 'NY', label: 'New York (NY)' },
-              { value: 'NC', label: 'North Carolina (NC)' },
-              { value: 'ND', label: 'North Dakota (ND)' },
-              { value: 'OH', label: 'Ohio (OH)' },
-              { value: 'OK', label: 'Oklahoma (OK)' },
-              { value: 'OR', label: 'Oregon (OR)' },
-              { value: 'PA', label: 'Pennsylvania (PA)' },
-              { value: 'RI', label: 'Rhode Island (RI)' },
-              { value: 'SC', label: 'South Carolina (SC)' },
-              { value: 'SD', label: 'South Dakota (SD)' },
-              { value: 'TN', label: 'Tennessee (TN)' },
-              { value: 'TX', label: 'Texas (TX)' },
-              { value: 'UT', label: 'Utah (UT)' },
-              { value: 'VT', label: 'Vermont (VT)' },
-              { value: 'VA', label: 'Virginia (VA)' },
-              { value: 'WA', label: 'Washington (WA)' },
-              { value: 'WV', label: 'West Virginia (WV)' },
-              { value: 'WI', label: 'Wisconsin (WI)' },
-              { value: 'WY', label: 'Wyoming (WY)' },
-              { value: 'DC', label: 'District of Columbia (DC)' }
-            ]
-          },
-          {
-            key: 'city',
-            label: 'City',
-            type: 'text',
-            required: false,
-            placeholder: 'Enter city name'
-          },
-          {
-            key: 'addressLine1',
-            label: 'Address Line 1',
-            type: 'text',
-            required: false,
-            placeholder: 'Enter primary address'
-          },
-          {
-            key: 'addressLine2',
-            label: 'Address Line 2',
-            type: 'text',
-            required: false,
-            placeholder: 'Enter secondary address (optional)'
-          },
-          {
-            key: 'postalCode',
-            label: 'Postal Code',
-            type: 'text',
-            required: false,
-            placeholder: 'Enter ZIP/postal code'
-          },
-          {
-            key: 'country',
-            label: 'Country',
-            type: 'select',
-            required: false,
-            options: [
-              { value: 'USA', label: 'United States' },
-              { value: 'CAN', label: 'Canada' },
-              { value: 'MEX', label: 'Mexico' },
-              { value: 'OTHER', label: 'Other' }
-            ]
-          }
-        ];
-      case 'legal':
-        return [
-          {
-            key: 'legalName',
-            label: 'Legal Name',
-            type: 'text',
-            required: true,
-            placeholder: 'Enter legal name'
-          },
-          {
-            key: 'taxId',
-            label: 'Tax ID',
-            type: 'text',
-            required: false,
-            placeholder: 'Enter tax ID (e.g., 75-8901234)'
-          },
-          {
-            key: 'formationDate',
-            label: 'Formation Date',
-            type: 'date',
-            required: false
-          }
-        ];
-      case 'contract':
-        return [
-          {
-            key: 'contractStartDate',
-            label: 'Contract Start',
-            type: 'date',
-            required: false
-          },
-          {
-            key: 'contractEndDate',
-            label: 'Contract End',
-            type: 'date',
-            required: false
-          },
-          {
-            key: 'fiscalYearStart',
-            label: 'Fiscal Year Start',
-            type: 'date',
-            required: false
-          },
-          {
-            key: 'fiscalYearEnd',
-            label: 'Fiscal Year End',
-            type: 'date',
-            required: false
-          }
-        ];
-      case 'system':
-        return [
-          {
-            key: 'timeZone',
-            label: 'Time Zone',
-            type: 'select',
-            required: false,
-            options: [
-              { value: '', label: 'Select Time Zone' },
-              { value: 'Eastern Time (ET)', label: 'Eastern Time (ET)' },
-              { value: 'Central Time (CT)', label: 'Central Time (CT)' },
-              { value: 'Mountain Time (MT)', label: 'Mountain Time (MT)' },
-              { value: 'Mountain Time - Arizona (MST)', label: 'Mountain Time - Arizona (MST)' },
-              { value: 'Pacific Time (PT)', label: 'Pacific Time (PT)' },
-              { value: 'Alaska Time (AKT)', label: 'Alaska Time (AKT)' },
-              { value: 'Hawaii Time (HST)', label: 'Hawaii Time (HST)' },
-              { value: 'Eastern Time - Canada (ET)', label: 'Eastern Time - Canada (ET)' },
-              { value: 'Pacific Time - Canada (PT)', label: 'Pacific Time - Canada (PT)' },
-              { value: 'Greenwich Mean Time (GMT)', label: 'Greenwich Mean Time (GMT)' },
-              { value: 'Central European Time (CET)', label: 'Central European Time (CET)' },
-              { value: 'Japan Standard Time (JST)', label: 'Japan Standard Time (JST)' },
-              { value: 'China Standard Time (CST)', label: 'China Standard Time (CST)' },
-              { value: 'Australian Eastern Time (AET)', label: 'Australian Eastern Time (AET)' }
-            ]
-          },
-          {
-            key: 'lastAuditDate',
-            label: 'Last Audit Date',
-            type: 'date',
-            required: false
-          },
-          {
-            key: 'nextAuditDate',
-            label: 'Next Audit Due',
-            type: 'date',
-            required: false
-          }
-        ];
-      default:
-        return [];
-    }
-  };
-
-  const getInitialData = (cardType: string): Record<string, any> => {
-    switch (cardType) {
-      case 'basic':
-        return {
-          pcode: community.pcode,
-          displayName: community.displayName,
-          communityType: community.communityType,
-          status: community.status,
-          isSubAssociation: (community.isSubAssociation || false).toString(),
-          parentAssociation: community.masterAssociation || ''
-        };
-      case 'geographic':
-        return {
-          addressSearch: '', // This will be populated by Google Places
-          state: community.state || '',
-          city: community.city || '',
-          addressLine1: community.addressLine1 || '',
-          addressLine2: community.addressLine2 || '',
-          postalCode: community.postalCode || '',
-          country: community.country || 'USA'
-        };
-      case 'legal':
-        return {
-          legalName: community.legalName || '',
-          taxId: community.taxId || '',
-          formationDate: community.formationDate || ''
-        };
-      case 'contract':
-        return {
-          contractStartDate: community.contractStartDate || '',
-          contractEndDate: community.contractEndDate || '',
-          fiscalYearStart: community.fiscalYearStart || '',
-          fiscalYearEnd: community.fiscalYearEnd || ''
-        };
-      case 'system':
-        return {
-          timeZone: community.timeZone || '',
-          lastAuditDate: community.lastAuditDate || '',
-          nextAuditDate: community.nextAuditDate || ''
-        };
-      default:
-        return {};
-    }
-  };
+  const modalTitle =
+    editingCard === 'basic'
+      ? 'Basic Information'
+      : editingCard === 'geographic'
+        ? 'Geographic Information'
+      : editingCard === 'legal'
+          ? 'Legal Information'
+          : editingCard === 'contract'
+            ? 'Contract Information'
+          : editingCard === 'system'
+            ? 'System Information'
+            : '';
 
   return (
-    <div>
-      {/* Community Header */}
-      <div className="mb-8">
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-primary mb-4">
-              {community.displayName || community.name}
-            </h1>
+    <div className="space-y-6">
+      <header className="space-y-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-primary mb-2">{community.displayName ?? community.legalName ?? 'Unnamed Community'}</h1>
             <div className="flex flex-wrap gap-3">
-              <span className="px-3 py-1 bg-royal-600 dark:bg-royal-500 text-white rounded-full text-sm font-medium theme-transition">
-                {community.pcode}
-              </span>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium theme-transition ${getCommunityStatusColor(community.status)}`}>
-                {formatStatus(community.status)}
-              </span>
-              {community.communityType && (
-                <span className={`px-3 py-1 rounded-full text-sm font-medium border theme-transition ${getCommunityTypeColor(community.communityType)}`}>
-                  {formatCommunityType(community.communityType)}
+              {community.propertyCode && (
+                <span className="px-3 py-1 bg-royal-600 dark:bg-royal-500 text-white rounded-full text-sm font-medium theme-transition">
+                  {community.propertyCode}
                 </span>
               )}
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium theme-transition ${getCommunityStatusColor(statusValue)}`}
+              >
+                {formatChipValue(statusValue)}
+              </span>
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium border theme-transition ${getCommunityTypeColor(clientTypeValue)}`}
+              >
+                {formatChipValue(clientTypeValue)}
+              </span>
             </div>
           </div>
-          
-          {/* Search Bar */}
-          <div className="w-80 ml-6">
+          <div className="w-full md:w-80">
             <CommunitySearchBar
               onSearch={search}
               onClear={clearSearch}
-              placeholder="Search: Community Code, State, Tax ID, Contract Start..."
+              placeholder="Search by code, name, address, status..."
               className="w-full"
             />
           </div>
         </div>
-        
-        {/* Search Results Indicator */}
-        {isSearching && (
-          <div className="mb-4">
-            <SearchResultsIndicator
-              searchTerm={searchTerm}
-              resultCount={searchResults.length}
-              onClear={clearSearch}
-            />
-          </div>
-        )}
-      </div>
+        <SearchResultsIndicator searchTerm={searchTerm} resultCount={searchResults.length} onClear={clearSearch} />
+      </header>
 
-      {/* Information Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Basic Information */}
-        <InfoCard 
-          title="Basic Information" 
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <InfoCard
+          title="Basic Information"
           icon={<BuildingOfficeIcon className="w-6 h-6" />}
-          canEdit={true}
-          onEdit={() => handleEditCard('basic')}
           highlightClass={getCardHighlightClass('basic')}
+          onEdit={() => openEditModal('basic')}
         >
-          <InfoRow label="Community Code" value={community.pcode} />
+          <InfoRow label="Community Code" value={community.propertyCode} />
           <InfoRow label="Display Name" value={community.displayName} />
-          <InfoRow 
-            label="Community Type" 
-            value={formatCommunityType(community.communityType)} 
-            chip={true}
-            chipColor={getCommunityTypeColorName(community.communityType)}
+          <InfoRow label="Legal Name" value={community.legalName} />
+          <InfoRow
+            label="Client Type"
+            value={formatChipValue(clientTypeValue)}
+            chip
+            chipColor={getCommunityTypeColorName(clientTypeValue)}
           />
-          <InfoRow label="Total Units" value={community.units || 0} />
-          <InfoRow 
-            label="Status" 
-            value={formatStatusDisplay(community.status)} 
-            chip={true}
-            chipColor={getCommunityStatusColorName(community.status)}
+          <InfoRow label="Service Type" value={community.serviceType} />
+          <InfoRow label="Management Type" value={community.managementType} />
+          <InfoRow label="Development Stage" value={community.developmentStage} />
+          <InfoRow
+            label="Community Status"
+            value={formatChipValue(statusValue)}
+            chip
+            chipColor={getCommunityStatusColorName(statusValue)}
           />
-          <InfoRow 
-            label="Sub Association" 
-            value={community.isSubAssociation ? 'Yes' : 'No'} 
-            chip={true}
-            chipColor={community.isSubAssociation ? 'blue' : 'gray'}
-          />
-          {community.isSubAssociation && (
-            <InfoRow label="Master Association" value={community.masterAssociation || 'Not Available'} />
-          )}
+          <InfoRow label="Built Out Units" value={community.builtOutUnits} />
+          <InfoRow label="Market" value={community.market} />
+          <InfoRow label="Office" value={community.office} />
+          <InfoRow label="Preferred Contact Info" value={community.preferredContactInfo} />
+          <InfoRow label="Website" value={community.website} />
         </InfoCard>
 
-        {/* Geographic Information */}
-        <InfoCard 
-          title="Geographic Information" 
+        <InfoCard
+          title="Geographic Information"
           icon={<BuildingOfficeIcon className="w-6 h-6" />}
-          canEdit={true}
-          onEdit={() => handleEditCard('geographic')}
           highlightClass={getCardHighlightClass('geographic')}
+          onEdit={() => openEditModal('geographic')}
         >
-          <InfoRow label="State" value={community.state} />
-          <InfoRow label="City" value={community.city} />
           <InfoRow label="Address Line 1" value={community.addressLine1} />
           <InfoRow label="Address Line 2" value={community.addressLine2} />
+          <InfoRow label="City" value={community.city} />
+          <InfoRow label="State" value={community.state} />
           <InfoRow label="Postal Code" value={community.postalCode} />
-          <InfoRow label="Country" value={community.country} />
         </InfoCard>
 
-        {/* Legal Information */}
-        <InfoCard 
-          title="Legal Information" 
+        <InfoCard
+          title="Legal & Finance"
           icon={<DocumentTextIcon className="w-6 h-6" />}
-          canEdit={true}
-          onEdit={() => handleEditCard('legal')}
           highlightClass={getCardHighlightClass('legal')}
+          onEdit={() => openEditModal('legal')}
         >
-          <InfoRow label="Legal Name" value={community.legalName} />
           <InfoRow label="Tax ID" value={community.taxId} />
-          <InfoRow label="Formation Date" value={formatDate(community.formationDate)} />
+          <InfoRow label="State Tax ID" value={community.stateTaxId} />
+          <InfoRow label="SOS File Number" value={community.sosFileNumber} />
+          <InfoRow label="Tax Return Type" value={community.taxReturnType} />
+          <InfoRow label="Acquisition Type" value={community.acquisitionType} />
         </InfoCard>
 
-                {/* Contract Details */}
-        <InfoCard 
-          title="Contract Details"
+        <InfoCard
+          title="Contract Information"
           icon={<ClockIcon className="w-6 h-6" />}
-          canEdit={true}
-          onEdit={() => handleEditCard('contract')}
-          highlightClass={getCardHighlightClass('contract')}
+          highlightClass={getCardHighlightClass('contracts')}
+          onEdit={() => openEditModal('contract')}
         >
-          <InfoRow label="Contract Start" value={formatDate(community.contractStartDate)} />
-          <InfoRow label="Contract End" value={formatDate(community.contractEndDate)} />
-          <InfoRow label="Fiscal Year Start" value={formatDate(community.fiscalYearStart)} />
-          <InfoRow label="Fiscal Year End" value={formatDate(community.fiscalYearEnd)} />
+          <InfoRow label="Contract Start" value={formatDate(community.contractStart)} />
+          <InfoRow label="Contract End" value={formatDate(community.contractEnd)} />
         </InfoCard>
 
-        {/* System Information */}
-        <InfoCard 
-          title="System Information" 
+        <InfoCard
+          title="System Information"
           icon={<CogIcon className="w-6 h-6" />}
-          canEdit={true}
-          onEdit={() => handleEditCard('system')}
           highlightClass={getCardHighlightClass('system')}
+          onEdit={() => openEditModal('system')}
         >
-          <InfoRow label="Time Zone" value={community.timeZone} />
-          <InfoRow label="Data Completeness" value={`${community.dataCompleteness || 0}%`} />
-          <InfoRow label="Last Updated" value={formatDate(community.lastUpdated)} />
-          <InfoRow label="Created Date" value={formatDate(community.createdDate)} />
+          <InfoRow label="Active" value={community.active ? 'Yes' : 'No'} />
+          <InfoRow label="Third Party Identifier" value={community.thirdPartyIdentifier} />
           <InfoRow label="Record ID" value={community.id} />
-          <InfoRow label="Last Audit Date" value={formatDate(community.lastAuditDate)} />
-          <InfoRow label="Next Audit Due" value={formatDate(community.nextAuditDate)} />
+          <InfoRow label="Created On" value={formatDate(community.createdOn)} />
+          <InfoRow label="Created By" value={community.createdByName || community.createdBy || 'Not available'} />
+          <InfoRow label="Last Modified On" value={formatDate(community.modifiedOn)} />
+          <InfoRow label="Last Modified By" value={community.modifiedByName || community.modifiedBy || 'Not available'} />
         </InfoCard>
 
-        {/* Management Team */}
-        <div className={`bg-surface rounded-lg shadow-sm border border-primary theme-transition ${getCardHighlightClass('management')}`}>
-          <ManagementTeam 
-            community={community} 
-            onRequestAssignment={() => {
-              // Navigate to Forms > Community Assignment
-              window.dispatchEvent(new CustomEvent('navigate:forms', { 
-                detail: { form: 'community-assignment' } 
-              }));
-            }}
-          />
-        </div>
-      </div>
+        <InfoCard title="Management Team" icon={<UserGroupIcon className="w-6 h-6" />}>
+          <p className="text-sm text-secondary">
+            Management team details will be reintroduced after the backend migration. For now this section is read-only.
+          </p>
+        </InfoCard>
+      </section>
 
-      {/* Edit Modal */}
       <EditModal
         isOpen={isEditModalOpen}
-        onClose={handleCloseModal}
-        title={editingCard ? `${editingCard.charAt(0).toUpperCase() + editingCard.slice(1)} Information` : ''}
+        onClose={closeEditModal}
+        title={modalTitle}
         fields={editingCard ? getFieldConfig(editingCard) : []}
-        initialData={formData}
+        initialData={modalInitialData}
         onSave={handleSave}
-        isLoading={isLoading}
-        onFieldChange={(key, value) => {
-          console.log('🏠 CommunityInfo onFieldChange called:', key, value);
-          // Update the form data when Google Places populates fields
-          setFormData(prev => {
-            const newData = { ...prev, [key]: value };
-            console.log('🏠 Updated formData:', newData);
-            return newData;
-          });
-        }}
+        isLoading={isSaving}
       />
     </div>
   );

@@ -1,4 +1,6 @@
 // Amenity API service functions
+// Temporarily disabled - using placeholder data in AmenitiesInfo component
+// Will be rebuilt when new amenity table is ready
 import api from './api';
 import type {
   AmenitiesResponse,
@@ -13,20 +15,10 @@ import type {
 export const amenityService = {
   /**
    * Get all amenities for a community with optional filtering and pagination
+   * Temporarily disabled - using placeholder data until new amenity table is ready
    */
   async getAmenities(communityId: number, filters: AmenityFilters = {}): Promise<AmenitiesResponse> {
-    const params = new URLSearchParams();
-    
-    if (filters.page) params.append('page', filters.page.toString());
-    if (filters.limit) params.append('limit', filters.limit.toString());
-    if (filters.type) params.append('type', filters.type);
-    if (filters.status) params.append('status', filters.status);
-    if (filters.search) params.append('search', filters.search);
-    
-    const queryString = params.toString();
-    const url = `/amenities/${communityId}/amenities${queryString ? `?${queryString}` : ''}`;
-    
-    return api.get(url);
+    throw new Error('getAmenities is temporarily disabled. Using placeholder data until new amenity table is ready.');
   },
 
   /**

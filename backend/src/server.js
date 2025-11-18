@@ -12,13 +12,14 @@ const { getConnection } = require('./config/database');
 
 // Import route files
 const communityRoutes = require('./routes/communityRoutes');
-const propertyRoutes = require('./routes/propertyRoutes');
+// const propertyRoutes = require('./routes/propertyRoutes'); // Temporarily disabled - will be rebuilt with new table
 const stakeholderRoutes = require('./routes/stakeholderRoutes');
-const amenityRoutes = require('./routes/amenityRoutes');
+// const amenityRoutes = require('./routes/amenityRoutes'); // Temporarily disabled - will be rebuilt with new table
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const authRoutes = require('./routes/authRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const managementTeamRoutes = require('./routes/managementTeamRoutes');
+const dynamicDropChoicesRoutes = require('./routes/dynamicDropChoicesRoutes');
 
 // Import error handling utilities
 const { globalErrorHandler } = require('./utils/errorHandler');
@@ -73,10 +74,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/management-team', managementTeamRoutes);
 app.use('/api/communities', communityRoutes);
-app.use('/api/properties', propertyRoutes);
+// app.use('/api/properties', propertyRoutes); // Temporarily disabled - will be rebuilt with new table
 app.use('/api/stakeholders', stakeholderRoutes);
-app.use('/api/amenities', amenityRoutes);
+// app.use('/api/amenities', amenityRoutes); // Temporarily disabled - will be rebuilt with new table
 app.use('/api/assignments', assignmentRoutes);
+app.use('/api/dynamic-drop-choices', dynamicDropChoicesRoutes);
 
 // Test database connection endpoint
 app.get('/api/test-db', async (req, res) => {
@@ -110,9 +112,9 @@ app.get('*', (req, res) => {
         'POST /api/auth/login',
         'GET /api/tickets',
         'GET /api/communities',
-        'GET /api/properties', 
+        // 'GET /api/properties', // Temporarily disabled 
         'GET /api/stakeholders',
-        'GET /api/amenities',
+        // 'GET /api/amenities', // Temporarily disabled
         'POST /api/assignments/requests'
       ]
     });
@@ -128,20 +130,36 @@ app.use(globalErrorHandler);
 // Start server
 app.listen(PORT, async () => {
   try {
-    // Test database connection on startup
-    logger.startup('Testing database connection...');
-    await getConnection();
-    logger.startup('Database connection successful!');
+    // Test master database connection on startup (we need this for authentication)
+    // Client database connections will be established per-user after login
+    logger.startup('Testing master database connection...');
+    const { getMasterConnection } = require('./config/database');
+    await getMasterConnection();
+    logger.startup('Master database connection successful!');
+    
+    // Optionally test default client database (for development/testing)
+    // In production, each user will connect to their organization's database
+    try {
+      await getConnection();
+      logger.startup('Default client database connection successful!');
+    } catch (clientError) {
+      logger.warn('Default client database connection failed (this is OK - users will connect to their org database)', 'Server');
+    }
     
     logger.startup(`HOA Nexus API Server running on port ${PORT}`);
     logger.info(`📍 Health check: http://localhost:${PORT}/`, 'Server');
     logger.info(`🏘️  Communities: http://localhost:${PORT}${config.api.basePath}/communities`, 'Server');
-    logger.info(`🏠 Properties: http://localhost:${PORT}${config.api.basePath}/properties`, 'Server');
+    // logger.info(`🏠 Properties: http://localhost:${PORT}${config.api.basePath}/properties`, 'Server'); // Temporarily disabled
     logger.info(`👥 Stakeholders: http://localhost:${PORT}${config.api.basePath}/stakeholders`, 'Server');
-    logger.info(`🏊 Amenities: http://localhost:${PORT}${config.api.basePath}/amenities`, 'Server');
+    // logger.info(`🏊 Amenities: http://localhost:${PORT}${config.api.basePath}/amenities`, 'Server'); // Temporarily disabled
     logger.info('═══════════════════════════════════════════════', 'Server');
   } catch (error) {
     logger.error('Failed to connect to database', 'Server', null, error);
     logger.error('Make sure your database is running and connection settings are correct', 'Server');
+    logger.error('For SQL Server Express, make sure:', 'Server');
+    logger.error('  1. SQL Server service is running', 'Server');
+    logger.error('  2. TCP/IP protocol is enabled in SQL Server Configuration Manager', 'Server');
+    logger.error('  3. SQL Server Browser service is running (if using named instance)', 'Server');
+    logger.error('  4. Port 1433 is not blocked by firewall', 'Server');
   }
 });

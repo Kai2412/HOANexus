@@ -147,10 +147,23 @@ const Login: React.FC = () => {
             {/* Test Accounts Info */}
             <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Test Accounts:</h4>
-              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                <div><strong>admin</strong> / password123 (Company Employee - Admin)</div>
-                <div><strong>manager</strong> / password123 (Community Manager)</div>
-                <div><strong>resident</strong> / password123 (Resident)</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-2">
+                <div>
+                  <div className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Admin Account:</div>
+                  <div className="font-mono bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-600">
+                    <div className="mb-1">
+                      <span className="text-gray-500 dark:text-gray-400">Email: </span>
+                      <span className="text-gray-900 dark:text-white select-all">admin@hoanexus.local</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Password: </span>
+                      <span className="text-gray-900 dark:text-white select-all">Password123!</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-gray-500 dark:text-gray-400 italic">
+                  (Company Employee - Admin)
+                </div>
               </div>
             </div>
           </div>

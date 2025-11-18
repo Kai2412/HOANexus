@@ -14,6 +14,8 @@ const parseAddressComponents = (components: any[]) => {
       addressData.streetNumber = component.longText || component.long_name;
     } else if (types.includes('route')) {
       addressData.streetName = component.longText || component.long_name;
+    } else if (types.includes('subpremise')) {
+      addressData.addressLine2 = component.longText || component.long_name;
     } else if (types.includes('locality')) {
       addressData.city = component.longText || component.long_name;
     } else if (types.includes('administrative_area_level_1')) {
@@ -73,8 +75,22 @@ const FieldRenderer: React.FC<{
   value: any;
   onChange: (value: any) => void;
   error?: string;
-  onFieldChange?: (key: string, value: any) => void;
-}> = ({ field, value, onChange, error, onFieldChange }) => {
+  onFieldChange?: (key: string, value: any, options?: { skipPendingReset?: boolean }) => void;
+  onAddressSelection?: (fieldKey: string, formattedAddress: string, updates: Record<string, string>) => void;
+  pendingAddress?: { fieldKey: string; formatted: string; updates: Record<string, string> } | null;
+  onApplyPendingAddress?: () => void;
+  onClearPendingAddress?: () => void;
+}> = ({
+  field,
+  value,
+  onChange,
+  error,
+  onFieldChange,
+  onAddressSelection,
+  pendingAddress,
+  onApplyPendingAddress,
+  onClearPendingAddress
+}) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     let newValue: any = e.target.value;
     
@@ -94,13 +110,15 @@ const FieldRenderer: React.FC<{
       case 'select':
         return (
           <select
-            value={value || ''}
+            value={value ?? ''}
             onChange={handleChange}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
             } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
           >
-            <option value="">Select {field.label}</option>
+            <option value="" disabled hidden>
+              {field.placeholder || `Select ${field.label}`}
+            </option>
             {field.options?.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -111,33 +129,22 @@ const FieldRenderer: React.FC<{
 
       case 'select-with-input':
         return (
-          <div className="space-y-2">
-            <select
-              value={value || ''}
-              onChange={handleChange}
-              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-              } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
-            >
-              <option value="">Select {field.label}</option>
-              {field.options?.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              Or enter manually: <input
-                type="text"
-                value={value || ''}
-                onChange={handleChange}
-                placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-                } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
-              />
-            </div>
-          </div>
+          <select
+            value={value ?? ''}
+            onChange={handleChange}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
+          >
+            <option value="" disabled hidden>
+              {field.placeholder || `Select ${field.label}`}
+            </option>
+            {field.options?.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         );
 
       case 'textarea':
@@ -180,35 +187,108 @@ const FieldRenderer: React.FC<{
           />
         );
 
-      case 'places-autocomplete':
+      case 'places-autocomplete': {
+        const pendingForField =
+          pendingAddress && pendingAddress.fieldKey === field.key ? pendingAddress : null;
+
+        const fieldLabelMap: Record<string, string> = {
+          Address: 'Address Line 1',
+          Address2: 'Address Line 2',
+          City: 'City',
+          State: 'State',
+          Zipcode: 'Postal Code'
+        };
+
         return (
-          <PlacesAutocomplete
-            value={value || ''}
-            onChange={onChange}
-            onPlaceSelected={(place: any) => {
-              // Handle place selection and populate individual fields
-              if (place && place.addressComponents) {
-                // Parse address components and update form data
-                const addressData = parseAddressComponents(place.addressComponents);
-                
-                // Update all the individual fields
-                Object.entries(addressData).forEach(([key, value]) => {
-                  if (value && onFieldChange) {
-                    onFieldChange(key, value);
+          <div className="space-y-3">
+            <PlacesAutocomplete
+              value={value ?? ''}
+              onChange={onChange}
+              onPlaceSelected={(place: any) => {
+                if (!place) {
+                  return;
+                }
+
+                const formattedAddress =
+                  place.formattedAddress ||
+                  place.formatted_address ||
+                  value ||
+                  '';
+
+                const components =
+                  place.addressComponents ||
+                  place.address_components ||
+                  [];
+
+                const parsedData = parseAddressComponents(components);
+
+                const fieldMapping: Record<string, string> = {
+                  addressLine1: 'Address',
+                  addressLine2: 'Address2',
+                  city: 'City',
+                  state: 'State',
+                  postalCode: 'Zipcode'
+                };
+
+                const updates: Record<string, string> = {};
+
+                Object.entries(fieldMapping).forEach(([sourceKey, targetKey]) => {
+                  const parsedValue = parsedData[sourceKey];
+                  if (parsedValue) {
+                    updates[targetKey] = parsedValue;
                   }
                 });
-              }
-            }}
-            placeholder={field.placeholder}
-            className={`${error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
-          />
+
+                onAddressSelection?.(field.key, formattedAddress, updates);
+              }}
+              placeholder={field.placeholder}
+              className={`${error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
+            />
+
+            {pendingForField && Object.keys(pendingForField.updates).length > 0 && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-900 dark:border-blue-700/60 dark:bg-blue-900/20 dark:text-blue-100">
+                <p className="text-sm font-medium">Apply address details to the form?</p>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {Object.entries(pendingForField.updates).map(([key, val]) =>
+                    val ? (
+                      <li key={key}>
+                        <span className="font-semibold">{fieldLabelMap[key] ?? key}:</span>{' '}
+                        {val}
+                      </li>
+                    ) : null
+                  )}
+                </ul>
+                <div className="mt-3 flex gap-2">
+                  {onApplyPendingAddress && (
+                    <button
+                      type="button"
+                      onClick={onApplyPendingAddress}
+                      className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
+                    >
+                      Apply
+                    </button>
+                  )}
+                  {onClearPendingAddress && (
+                    <button
+                      type="button"
+                      onClick={onClearPendingAddress}
+                      className="rounded-md px-3 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
+                    >
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         );
+      }
 
       default:
         return (
           <input
             type={field.type}
-            value={value || ''}
+            value={value ?? ''}
             onChange={handleChange}
             placeholder={field.placeholder}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -246,22 +326,40 @@ const EditModal: React.FC<EditModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pendingAddress, setPendingAddress] = useState<{
+    fieldKey: string;
+    formatted: string;
+    updates: Record<string, string>;
+  } | null>(null);
 
   // Initialize form data when modal opens
   useEffect(() => {
     if (isOpen) {
       setFormData(initialData);
       setErrors({});
+      setPendingAddress(null);
     }
   }, [isOpen, initialData]);
 
   // Handle field value changes
-  const handleFieldChange = (fieldKey: string, value: any) => {
+  const handleFieldChange = (
+    fieldKey: string,
+    value: any,
+    options: { skipPendingReset?: boolean } = {}
+  ) => {
     setFormData(prev => ({
       ...prev,
       [fieldKey]: value
     }));
     
+    if (
+      !options.skipPendingReset &&
+      pendingAddress &&
+      (fieldKey === pendingAddress.fieldKey || pendingAddress.updates[fieldKey] !== undefined)
+    ) {
+      setPendingAddress(null);
+    }
+
     // Clear error when user starts typing
     if (errors[fieldKey]) {
       setErrors(prev => ({
@@ -270,6 +368,34 @@ const EditModal: React.FC<EditModalProps> = ({
       }));
     }
   };
+
+  const handleAddressSelection = (
+    fieldKey: string,
+    formattedAddress: string,
+    updates: Record<string, string>
+  ) => {
+    handleFieldChange(fieldKey, formattedAddress, { skipPendingReset: true });
+
+    if (Object.keys(updates).length > 0) {
+      setPendingAddress({ fieldKey, formatted: formattedAddress, updates });
+    } else {
+      setPendingAddress(null);
+    }
+  };
+
+  const applyPendingAddress = () => {
+    if (!pendingAddress) return;
+
+    Object.entries(pendingAddress.updates).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        handleFieldChange(key, value, { skipPendingReset: true });
+      }
+    });
+
+    setPendingAddress(null);
+  };
+
+  const clearPendingAddress = () => setPendingAddress(null);
 
   // Validate form
   const validateForm = (): boolean => {
@@ -316,6 +442,7 @@ const EditModal: React.FC<EditModalProps> = ({
   const handleCancel = () => {
     setFormData(initialData);
     setErrors({});
+    setPendingAddress(null);
     onClose();
   };
 
@@ -378,9 +505,13 @@ const EditModal: React.FC<EditModalProps> = ({
                         key={field.key}
                         field={field}
                         value={formData[field.key]}
-                        onChange={(value) => handleFieldChange(field.key, value)}
+                      onChange={(value) => handleFieldChange(field.key, value)}
                         error={errors[field.key]}
-                        onFieldChange={onFieldChange}
+                      onFieldChange={(key, value, options) => handleFieldChange(key, value, options)}
+                      onAddressSelection={handleAddressSelection}
+                      pendingAddress={pendingAddress}
+                      onApplyPendingAddress={applyPendingAddress}
+                      onClearPendingAddress={clearPendingAddress}
                       />
                     );
                   })}

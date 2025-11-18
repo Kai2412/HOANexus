@@ -4,7 +4,7 @@ import {
   MagnifyingGlassIcon,
   XMarkIcon 
 } from '@heroicons/react/24/outline';
-import dataService from '../../services/dataService';
+// import dataService from '../../services/dataService'; // Temporarily disabled - using placeholder data
 import type { Community, Property } from '../../types';
 import { getPropertyStatusColor } from '../../utils/statusColors';
 
@@ -153,13 +153,135 @@ const ResidentInfo: React.FC<ResidentInfoProps> = ({ community }) => {
     }
   }, [searchTerm, properties]);
 
+  // Placeholder data - will be replaced when new property table is ready
+  const getPlaceholderProperties = (): Property[] => {
+    return [
+      {
+        id: 1,
+        communityId: 1,
+        unit: '101',
+        addressLine1: '123 Main Street',
+        addressLine2: 'Unit 101',
+        city: 'San Diego',
+        state: 'CA',
+        postalCode: '92101',
+        country: 'USA',
+        propertyType: 'Condominium',
+        squareFeet: 1200,
+        bedrooms: 2,
+        bathrooms: 2,
+        lotSize: undefined,
+        status: 'Occupied',
+        isActive: true,
+        ownerName: 'John Smith'
+      },
+      {
+        id: 2,
+        communityId: 1,
+        unit: '102',
+        addressLine1: '123 Main Street',
+        addressLine2: 'Unit 102',
+        city: 'San Diego',
+        state: 'CA',
+        postalCode: '92101',
+        country: 'USA',
+        propertyType: 'Condominium',
+        squareFeet: 1500,
+        bedrooms: 3,
+        bathrooms: 2.5,
+        lotSize: undefined,
+        status: 'Occupied',
+        isActive: true,
+        ownerName: 'Sarah Johnson'
+      },
+      {
+        id: 3,
+        communityId: 1,
+        unit: '201',
+        addressLine1: '123 Main Street',
+        addressLine2: 'Unit 201',
+        city: 'San Diego',
+        state: 'CA',
+        postalCode: '92101',
+        country: 'USA',
+        propertyType: 'Townhome',
+        squareFeet: 1800,
+        bedrooms: 3,
+        bathrooms: 3,
+        lotSize: undefined,
+        status: 'Vacant',
+        isActive: true,
+        ownerName: undefined
+      },
+      {
+        id: 4,
+        communityId: 1,
+        unit: '202',
+        addressLine1: '123 Main Street',
+        addressLine2: 'Unit 202',
+        city: 'San Diego',
+        state: 'CA',
+        postalCode: '92101',
+        country: 'USA',
+        propertyType: 'Condominium',
+        squareFeet: 1100,
+        bedrooms: 1,
+        bathrooms: 1,
+        lotSize: undefined,
+        status: 'ForRent',
+        isActive: true,
+        ownerName: 'Michael Chen'
+      },
+      {
+        id: 5,
+        communityId: 1,
+        unit: '301',
+        addressLine1: '123 Main Street',
+        addressLine2: 'Unit 301',
+        city: 'San Diego',
+        state: 'CA',
+        postalCode: '92101',
+        country: 'USA',
+        propertyType: 'Condominium',
+        squareFeet: 2000,
+        bedrooms: 4,
+        bathrooms: 3,
+        lotSize: undefined,
+        status: 'Occupied',
+        isActive: true,
+        ownerName: 'Emily Rodriguez'
+      },
+      {
+        id: 6,
+        communityId: 1,
+        unit: '302',
+        addressLine1: '123 Main Street',
+        addressLine2: 'Unit 302',
+        city: 'San Diego',
+        state: 'CA',
+        postalCode: '92101',
+        country: 'USA',
+        propertyType: 'Townhome',
+        squareFeet: 1600,
+        bedrooms: 2,
+        bathrooms: 2,
+        lotSize: undefined,
+        status: 'ForSale',
+        isActive: true,
+        ownerName: 'David Kim'
+      }
+    ];
+  };
+
   const loadProperties = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await dataService.getProperties(community.id);
-      setProperties(response);
+      // Using placeholder data - API will be reconnected when new property table is ready
+      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+      const placeholderData = getPlaceholderProperties();
+      setProperties(placeholderData);
     } catch (err) {
       setError('Failed to load properties. Please try again.');
     } finally {

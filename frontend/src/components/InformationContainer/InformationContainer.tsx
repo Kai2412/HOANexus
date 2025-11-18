@@ -6,13 +6,14 @@ import AmenitiesInfo from '../AmenitiesInfo/AmenitiesInfo';
 import Directory from '../Directory/Directory';
 import AddStakeholder from '../Directory/AddStakeholder';
 import Forms from '../Forms/Forms';
+import Admin from '../Admin/Admin';
 import Tickets from '../Tickets';
 import type { Community } from '../../types';
 import { useCommunity } from '../../context';
 
 interface InformationContainerProps {
   selectedCommunity: Community | null;
-  currentOverlay?: 'directory' | 'add-stakeholder' | 'forms' | 'tickets' | 'reports' | 'settings' | null;
+  currentOverlay?: 'directory' | 'add-stakeholder' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | null;
   overlayParams?: Record<string, any>;
 }
 
@@ -100,18 +101,20 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
           </div>
         )}
         {currentOverlay === 'forms' && (
-          <Forms 
-            selectedCommunity={selectedCommunity}
-            initialView={overlayParams.view}
-            initialForm={overlayParams.form}
-            onBackToCommunity={() => {
-              window.dispatchEvent(new CustomEvent('overlay:close'));
-            }}
-            onFormNavigation={(category, form) => {
-              console.log(`Navigate to form: ${category} > ${form}`);
-              // TODO: Implement form navigation
-            }}
-          />
+          <div className="h-full flex flex-col">
+            <Forms 
+              selectedCommunity={selectedCommunity}
+              initialView={overlayParams.view}
+              initialForm={overlayParams.form}
+              onBackToCommunity={() => {
+                window.dispatchEvent(new CustomEvent('overlay:close'));
+              }}
+              onFormNavigation={(category, form) => {
+                console.log(`Navigate to form: ${category} > ${form}`);
+                // TODO: Implement form navigation
+              }}
+            />
+          </div>
         )}
         {currentOverlay === 'tickets' && (
           <Tickets 
@@ -146,6 +149,15 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
                 Back to Community
               </button>
             </div>
+          </div>
+        )}
+        {currentOverlay === 'admin' && (
+          <div className="h-full flex flex-col">
+            <Admin 
+              onClose={() => {
+                window.dispatchEvent(new CustomEvent('overlay:close'));
+              }}
+            />
           </div>
         )}
       </div>
@@ -192,11 +204,7 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
             {/* Community Info Panel */}
             <Tab.Panel className="h-full">
               <div className="overflow-y-auto p-6" style={{ height: 'calc(100vh - 200px)' }}>
-                <CommunityInfo 
-                  community={selectedCommunity} 
-                  communities={communities}
-                  onCommunityUpdate={updateSelectedCommunity}
-                />
+                <CommunityInfo community={selectedCommunity} onCommunityUpdate={updateSelectedCommunity} />
               </div>
             </Tab.Panel>
 

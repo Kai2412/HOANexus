@@ -1,11 +1,11 @@
 import React from 'react';
 
 interface MenusProps {
-  onOverlayNavigation?: (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings', params?: Record<string, any>) => void;
+  onOverlayNavigation?: (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin', params?: Record<string, any>) => void;
 }
 
 const Menus: React.FC<MenusProps> = ({ onOverlayNavigation }) => {
-  const handleButtonClick = (overlay: 'directory' | 'forms' | 'tickets' | 'reports') => {
+  const handleButtonClick = (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'admin') => {
     if (!onOverlayNavigation) return;
     
     switch (overlay) {
@@ -20,6 +20,9 @@ const Menus: React.FC<MenusProps> = ({ onOverlayNavigation }) => {
         break;
       case 'reports':
         onOverlayNavigation('reports', {});
+        break;
+      case 'admin':
+        onOverlayNavigation('admin', {});
         break;
     }
   };
@@ -58,6 +61,14 @@ const Menus: React.FC<MenusProps> = ({ onOverlayNavigation }) => {
           onClick={() => handleButtonClick('reports')}
         >
           Reports
+        </button>
+
+        {/* Admin Button */}
+        <button 
+          className="bg-royal-600 hover:bg-royal-700 text-white px-4 py-2 rounded-lg transition-colors theme-transition"
+          onClick={() => handleButtonClick('admin')}
+        >
+          Admin
         </button>
 
         

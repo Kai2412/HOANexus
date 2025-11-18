@@ -46,14 +46,14 @@ const CommunitySelector: React.FC<CommunitySelectorProps> = ({
     }
   };
 
-  const filteredCommunities = communities.filter(community =>
-    (community.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (community.pcode || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredCommunities = communities.filter((community) =>
+    (community.displayName || community.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (community.propertyCode || community.pcode || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const sortedCommunities = filteredCommunities.sort((a, b) => {
-    const nameA = (a.name || a.displayName || '').toLowerCase();
-    const nameB = (b.name || b.displayName || '').toLowerCase();
+    const nameA = (a.displayName || a.name || '').toLowerCase();
+    const nameB = (b.displayName || b.name || '').toLowerCase();
     return nameA.localeCompare(nameB);
   });
 
@@ -71,7 +71,7 @@ const CommunitySelector: React.FC<CommunitySelectorProps> = ({
               <div className="relative">
                 <Combobox.Input
                   className="w-full rounded-lg border border-primary bg-surface py-2 pl-3 pr-10 text-sm leading-5 text-primary focus:border-royal-500 focus:outline-none focus:ring-1 focus:ring-royal-500 theme-transition placeholder-tertiary"
-                  displayValue={(community: Community | null) => community?.name || ''}
+                  displayValue={(community: Community | null) => community?.displayName || community?.name || ''}
                   onChange={(event) => setSearchTerm(event.target.value)}
                   placeholder="Search communities..."
                 />
@@ -94,7 +94,7 @@ const CommunitySelector: React.FC<CommunitySelectorProps> = ({
                   ) : (
                     sortedCommunities.map((community) => (
                       <Combobox.Option
-                        key={community.pcode}
+                        key={community.id}
                         className={({ active }) =>
                           `relative cursor-default select-none py-3 pl-3 pr-9 theme-transition ${
                             active ? 'bg-royal-50 dark:bg-royal-900/30 text-royal-900 dark:text-royal-100' : 'text-primary'
@@ -106,7 +106,7 @@ const CommunitySelector: React.FC<CommunitySelectorProps> = ({
                           <>
                             <div className="flex items-center">
                               <span className={`block truncate ${selected ? 'font-semibold' : 'font-normal'}`}>
-                                {community.pcode} - {community.name}
+                                {community.propertyCode || 'N/A'} - {community.displayName || community.name}
                               </span>
                             </div>
                             {selected ? (
@@ -166,10 +166,10 @@ const CommunitySelector: React.FC<CommunitySelectorProps> = ({
         <div className="space-y-4">
           {sortedCommunities.map((community) => (
             <div
-              key={community.pcode}
+              key={community.id}
               onClick={() => handleCommunitySelect(community)}
               className={`p-6 rounded-lg border-2 cursor-pointer transition-all duration-300 hover:border-royal-500 hover:shadow-md hover:-translate-y-1 theme-transition ${
-                selectedCommunity?.pcode === community.pcode
+                selectedCommunity?.id === community.id
                   ? 'border-royal-500 bg-royal-50 dark:bg-royal-900/20 shadow-lg'
                   : 'border-transparent bg-surface shadow-sm'
               }`}
@@ -177,26 +177,29 @@ const CommunitySelector: React.FC<CommunitySelectorProps> = ({
               <div className="flex items-center justify-between mb-3">
                 <span
                   className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold border-2 theme-transition ${
-                    selectedCommunity?.pcode === community.pcode
+                    selectedCommunity?.id === community.id
                       ? 'bg-royal-600 text-white border-royal-600'
                       : 'bg-transparent text-royal-600 dark:text-royal-400 border-royal-600 dark:border-royal-400'
                   }`}
                 >
-                  {community.pcode}
+                  {community.propertyCode || 'N/A'}
                 </span>
                 <span
                   className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border theme-transition ${getCommunityStatusColor(
-                    community.status
+                    community.communityStatus || community.status
                   )}`}
                 >
-                  {formatStatus(community.status)}
+                  {formatStatus(community.communityStatus || community.status)}
                 </span>
               </div>
               <h3 className="text-lg font-semibold text-primary mb-2 leading-tight">
-                {community.name}
+                {community.displayName || community.name}
               </h3>
               <p className="text-sm text-secondary">
-                <span className="font-semibold text-royal-600 dark:text-royal-400">{community.units}</span> Units
+                <span className="font-semibold text-royal-600 dark:text-royal-400">
+                  {community.builtOutUnits ?? community.units ?? 0}
+                </span>{' '}
+                Units
               </p>
             </div>
           ))}

@@ -3,19 +3,16 @@ import logger from './logger';
 import type {
   Community,
   DatabaseCommunity,
-  CreateCommunityData,
   UpdateCommunityData,
   Property,
-  DatabaseProperty,
   CreateResponse,
   UpdateResponse,
   DeleteResponse,
   CommunitiesApiResponse,
   CommunityApiResponse,
-  PropertiesApiResponse,
-  PropertyApiResponse,
   StakeholdersApiResponse,
   StakeholderApiResponse,
+  DynamicDropChoiceMap,
 } from '../types';
 
 class DataService {
@@ -23,186 +20,231 @@ class DataService {
   
   async getCommunities(): Promise<Community[]> {
     try {
-      const response = await api.get<{success: boolean, data: DatabaseCommunity[], message?: string, count?: number}>('/communities');
-      const communities = response.data || [];
-      
-      // Map database fields to component-expected fields
-      return communities.map((community: DatabaseCommunity) => this.mapCommunityFromDatabase(community));
+      const response = await api.get<{ success: boolean; data: DatabaseCommunity[]; message?: string; count?: number }>('/communities');
+      const communities = response.data ?? [];
+      return communities.map((community) => this.mapCommunityFromDatabase(community));
     } catch (error) {
       logger.dataFetchError('communities', error as Error, 'DataService');
       throw error;
     }
   }
 
-  async getCommunityById(id: number): Promise<Community> {
+  async getCommunityById(id: string): Promise<Community> {
     try {
-      const response = await api.get<{success: boolean, data: DatabaseCommunity, message?: string}>(`/communities/${id}`);
-      const community = response.data;
-      
-      // Apply same mapping for single community
-      return this.mapCommunityFromDatabase(community);
+      const response = await api.get<{ success: boolean; data: DatabaseCommunity; message?: string }>(`/communities/${id}`);
+      return this.mapCommunityFromDatabase(response.data);
     } catch (error) {
       logger.dataFetchError(`community ${id}`, error as Error, 'DataService');
       throw error;
     }
   }
 
-  async getCommunityByPcode(pcode: string): Promise<Community> {
+  async createCommunity(communityData: UpdateCommunityData): Promise<Community> {
     try {
-      const response = await api.get<{success: boolean, data: DatabaseCommunity, message?: string}>(`/communities/pcode/${pcode}`);
-      const community = response.data;
-      
-      // Apply same mapping
-      return this.mapCommunityFromDatabase(community);
+      const response = await api.post<{ success: boolean; data: DatabaseCommunity; message?: string }>(
+        '/communities',
+        communityData
+      );
+      return this.mapCommunityFromDatabase(response.data);
     } catch (error) {
-      logger.dataFetchError(`community with pcode ${pcode}`, error as Error, 'DataService');
+      logger.dataFetchError('create community', error as Error, 'DataService');
       throw error;
     }
   }
 
-  async createCommunity(communityData: CreateCommunityData): Promise<CreateResponse> {
+  async updateCommunity(id: string, communityData: UpdateCommunityData): Promise<Community> {
     try {
-      const response = await api.post<CreateResponse>('/communities', communityData);
-      return response;
-    } catch (error) {
-      logger.error('Error creating community', 'DataService', { communityData }, error as Error);
-      throw error;
-    }
-  }
-
-  async updateCommunity(id: number, communityData: UpdateCommunityData): Promise<UpdateResponse> {
-    try {
-      const response = await api.put<UpdateResponse>(`/communities/${id}`, communityData);
-      return response;
+      const response = await api.put<{ success: boolean; data: DatabaseCommunity; message?: string }>(
+        `/communities/${id}`,
+        communityData
+      );
+      return this.mapCommunityFromDatabase(response.data);
     } catch (error) {
       logger.error(`Error updating community ${id}`, 'DataService', { id, communityData }, error as Error);
       throw error;
     }
   }
 
-  async deleteCommunity(id: number): Promise<DeleteResponse> {
+  async deleteCommunity(_id: string): Promise<DeleteResponse> {
+    throw new Error('deleteCommunity is not implemented in the new API surface yet.');
+  }
+
+  // Legacy helpers retained for compatibility but not yet implemented.
+  async getSubAssociations(): Promise<CommunitiesApiResponse> {
+    throw new Error('getSubAssociations is not implemented in the new API surface yet.');
+  }
+
+  async getParentCommunity(): Promise<CommunityApiResponse> {
+    throw new Error('getParentCommunity is not implemented in the new API surface yet.');
+  }
+
+  // Temporarily disabled - using placeholder data in ResidentInfo component
+  // Will be rebuilt when new property table is ready
+  async getProperties(): Promise<Property[]> {
+    throw new Error('getProperties is temporarily disabled. Using placeholder data until new property table is ready.');
+  }
+
+  async getStakeholdersByCommunity(): Promise<StakeholdersApiResponse> {
+    throw new Error('getStakeholdersByCommunity is not implemented in the new API surface yet.');
+  }
+
+  async getDynamicDropChoices(groupIds: string[], includeInactive = false): Promise<DynamicDropChoiceMap> {
+    if (!groupIds.length) {
+      return {};
+    }
+
+    const params = new URLSearchParams();
+    params.append('groupIds', groupIds.join(','));
+
+    if (includeInactive) {
+      params.append('includeInactive', 'true');
+    }
+
     try {
-      const response = await api.delete<DeleteResponse>(`/communities/${id}`);
-      return response;
+      const response = await api.get<{ success: boolean; data: DynamicDropChoiceMap; message?: string }>(
+        `/dynamic-drop-choices?${params.toString()}`
+      );
+      return response.data ?? {};
     } catch (error) {
-      logger.error(`Error deleting community ${id}`, 'DataService', { id }, error as Error);
+      logger.dataFetchError('dynamic drop choices', error as Error, 'DataService');
       throw error;
     }
   }
 
-  // ===== MASTER ASSOCIATIONS / SUB-ASSOCIATIONS =====
+  // Legacy method for backward compatibility
+  async getDynamicDropChoicesLegacy(tableName: string, columns: string[], includeInactive = false): Promise<DynamicDropChoiceMap> {
+    if (!columns.length) {
+      return {};
+    }
 
-  async getSubAssociations(parentCommunityId: number): Promise<CommunitiesApiResponse> {
+    const params = new URLSearchParams({
+      table: tableName,
+      column: columns.join(',')
+    });
+
+    if (includeInactive) {
+      params.append('includeInactive', 'true');
+    }
+
     try {
-      const response = await api.get<CommunitiesApiResponse>(`/communities/${parentCommunityId}/sub-associations`);
-      return response;
+      const response = await api.get<{ success: boolean; data: DynamicDropChoiceMap; message?: string }>(
+        `/dynamic-drop-choices?${params.toString()}`
+      );
+      return response.data ?? {};
     } catch (error) {
-      logger.dataFetchError(`sub-associations for community ${parentCommunityId}`, error as Error, 'DataService');
+      logger.dataFetchError('dynamic drop choices', error as Error, 'DataService');
       throw error;
     }
   }
 
-  async getParentCommunity(communityId: number): Promise<CommunityApiResponse> {
+  async createDynamicDropChoice(data: {
+    groupId: string;
+    choiceValue: string;
+    displayOrder?: number;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }): Promise<any> {
     try {
-      const response = await api.get<CommunityApiResponse>(`/communities/${communityId}/parent`);
-      return response;
+      const response = await api.post<{ success: boolean; data: any; message?: string }>(
+        '/dynamic-drop-choices',
+        data
+      );
+      return response.data;
     } catch (error) {
-      logger.dataFetchError(`parent community for ${communityId}`, error as Error, 'DataService');
+      logger.error('Error creating dynamic drop choice', 'DataService', data, error as Error);
       throw error;
     }
   }
 
-  // ===== PROPERTIES =====
-  
-  async getProperties(communityId: number): Promise<Property[]> {
+  async updateDynamicDropChoice(choiceId: string, data: {
+    choiceValue?: string;
+    displayOrder?: number;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }): Promise<any> {
     try {
-      logger.debug(`Fetching properties for community: ${communityId}`, 'DataService');
-      const response = await api.get<{success: boolean, data: DatabaseProperty[], message?: string, count?: number}>(`/properties/community/${communityId}`);
-      const properties = response.data || [];
-      
-      // Normalize property data
-      return properties.map((property: DatabaseProperty) => this.mapPropertyFromDatabase(property));
+      const response = await api.put<{ success: boolean; data: any; message?: string }>(
+        `/dynamic-drop-choices/${choiceId}`,
+        data
+      );
+      return response.data;
     } catch (error) {
-      logger.dataFetchError('properties', error as Error, 'DataService');
+      logger.error(`Error updating dynamic drop choice ${choiceId}`, 'DataService', { choiceId, data }, error as Error);
       throw error;
     }
   }
 
-  // ===== FUTURE ENDPOINTS =====
-
-  async getStakeholdersByCommunity(communityId: number): Promise<StakeholdersApiResponse> {
+  async toggleDynamicDropChoiceActive(choiceId: string, isActive: boolean): Promise<any> {
     try {
-      const response = await api.get<StakeholdersApiResponse>(`/communities/${communityId}/stakeholders`);
-      return response;
+      const response = await api.put<{ success: boolean; data: any; message?: string }>(
+        `/dynamic-drop-choices/${choiceId}/toggle-active`,
+        { isActive }
+      );
+      return response.data;
     } catch (error) {
-      logger.dataFetchError(`stakeholders for community ${communityId}`, error as Error, 'DataService');
+      logger.error(`Error toggling active status for dynamic drop choice ${choiceId}`, 'DataService', { choiceId, isActive }, error as Error);
       throw error;
     }
   }
 
-  // ===== PRIVATE MAPPING METHODS =====
+  async bulkUpdateChoiceOrder(groupId: string, choices: Array<{ choiceId: string }>): Promise<void> {
+    try {
+      await api.post<{ success: boolean; message?: string }>(
+        '/dynamic-drop-choices/bulk-update-order',
+        { groupId, choices }
+      );
+    } catch (error) {
+      logger.error('Error updating choice order', 'DataService', { groupId, choices }, error as Error);
+      throw error;
+    }
+  }
 
   private mapCommunityFromDatabase(community: DatabaseCommunity): Community {
-    return {
-      // Normalized fields for frontend components
-      id: community.ID,
-      pcode: community.Pcode,
-      name: community.Name || community.DisplayName,
-      displayName: community.DisplayName,
-      legalName: community.Name, // Map Name to legalName for UI display
-      communityType: community.CommunityType,
-      status: community.Status || 'Active',
-      units: community.PropertyCount ?? 0,
-      formationDate: community.FormationDate,
-      fiscalYearStart: community.FiscalYearStart,
-      fiscalYearEnd: community.FiscalYearEnd,
-      contractStartDate: community.ContractStartDate,
-      contractEndDate: community.ContractEndDate,
-      taxId: community.TaxID,
-      timeZone: community.TimeZone,
-      state: community.State,
-      city: community.City,
-      addressLine1: community.AddressLine1,
-      addressLine2: community.AddressLine2,
-      postalCode: community.PostalCode,
-      country: community.Country,
-      masterAssociation: community.MasterAssociation,
-      lastUpdated: community.LastUpdated,
-      createdDate: community.CreatedDate,
-      isSubAssociation: community.IsSubAssociation,
-      lastAuditDate: community.LastAuditDate,
-      nextAuditDate: community.NextAuditDate,
-      dataCompleteness: community.DataCompleteness,
-      isActive: community.IsActive,
-      
-      // Keep original database fields too (for debugging/future use)
+    const mapped: Community = {
+      id: community.CommunityID,
+      propertyCode: community.PropertyCode ?? null,
+      displayName: community.DisplayName ?? null,
+      legalName: community.LegalName ?? null,
+      active: community.Active ?? null,
+      contractStart: community.ContractStart ?? null,
+      contractEnd: community.ContractEnd ?? null,
+      addressLine1: community.Address ?? null,
+      addressLine2: community.Address2 ?? null,
+      city: community.City ?? null,
+      state: community.State ?? null,
+      postalCode: community.Zipcode ?? null,
+      thirdPartyIdentifier: community.ThirdPartyIdentifier ?? null,
+      market: community.Market ?? null,
+      office: community.Office ?? null,
+      website: community.Website ?? null,
+      taxId: community.TaxID ?? null,
+      stateTaxId: community.StateTaxID ?? null,
+      sosFileNumber: community.SOSFileNumber ?? null,
+      taxReturnType: community.TaxReturnType ?? null,
+      clientType: community.ClientType ?? null,
+      serviceType: community.ServiceType ?? null,
+      managementType: community.ManagementType ?? null,
+      builtOutUnits: community.BuiltOutUnits ?? null,
+      developmentStage: community.DevelopmentStage ?? null,
+      communityStatus: community.CommunityStatus ?? null,
+      acquisitionType: community.AcquisitionType ?? null,
+      preferredContactInfo: community.PreferredContactInfo ?? null,
+      createdOn: community.CreatedOn ?? null,
+      createdBy: community.CreatedBy ?? null,
+      createdByName: community.CreatedByName ?? null,
+      modifiedOn: community.ModifiedOn ?? null,
+      modifiedBy: community.ModifiedBy ?? null,
+      modifiedByName: community.ModifiedByName ?? null,
       original: community
     };
-  }
 
-  private mapPropertyFromDatabase(property: DatabaseProperty): Property {
-    return {
-      id: property.ID,
-      communityId: property.CommunityID,
-      addressLine1: property.AddressLine1,
-      addressLine2: property.AddressLine2,
-      city: property.City,
-      state: property.State,
-      postalCode: property.PostalCode,
-      country: property.Country,
-      propertyType: property.PropertyType,
-      squareFootage: property.SquareFootage,
-      bedrooms: property.Bedrooms,
-      bathrooms: property.Bathrooms,
-      yearBuilt: property.YearBuilt,
-      lotSize: property.LotSize,
-      parcelId: property.ParcelID,
-      assessmentPercentage: property.AssessmentPercentage,
-      isActiveDevelopment: property.IsActiveDevelopment,
-      votingInterest: property.VotingInterest,
-      status: property.Status,
-      isActive: property.IsActive
-    };
+    // Derived compatibility fields for existing components (to be refactored)
+    mapped.status = mapped.communityStatus ?? (mapped.active ? 'Active' : 'Inactive');
+    mapped.name = mapped.displayName ?? mapped.legalName ?? mapped.propertyCode ?? null;
+    mapped.pcode = mapped.propertyCode ?? null;
+    mapped.units = mapped.builtOutUnits ?? null;
+
+    return mapped;
   }
 }
 

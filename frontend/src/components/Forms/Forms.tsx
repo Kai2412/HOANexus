@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import CommunityAssignmentForm from './CommunityAssignmentForm';
+import CreateCommunityForm from './CreateCommunityForm/CreateCommunityForm';
 
 interface Community {
   id: number;
@@ -16,11 +17,13 @@ interface FormsProps {
   initialForm?: string;
 }
 
-type FormView = 'categories' | 'community-assignment';
+type FormView = 'categories' | 'community-assignment' | 'create-community';
 
 const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, selectedCommunity, initialView, initialForm }) => {
   const [currentView, setCurrentView] = useState<FormView>(
-    initialForm === 'community-assignment' ? 'community-assignment' : 'categories'
+    initialForm === 'community-assignment' ? 'community-assignment' :
+    initialForm === 'create-community' ? 'create-community' :
+    'categories'
   );
   const handleBreadcrumbClick = (target: 'community') => {
     if (target === 'community' && onBackToCommunity) {
@@ -31,6 +34,8 @@ const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, sele
   const handleFormClick = (category: string, form: string) => {
     if (form === 'Community Assignment') {
       setCurrentView('community-assignment');
+    } else if (form === 'Create Community') {
+      setCurrentView('create-community');
     } else {
       // For other forms, use the callback
       if (onFormNavigation) {
@@ -62,15 +67,31 @@ const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, sele
   // Render specific form if selected
   if (currentView === 'community-assignment') {
     return (
-      <CommunityAssignmentForm
-        selectedCommunity={selectedCommunity}
-        onCancel={handleBackToForms}
-        onSuccess={(assignment) => {
-          console.log('Assignment submitted:', assignment);
-          // TODO: Handle success (maybe show success message and go back to forms)
-          handleBackToForms();
-        }}
-      />
+      <div className="h-full flex flex-col">
+        <CommunityAssignmentForm
+          selectedCommunity={selectedCommunity}
+          onCancel={handleBackToForms}
+          onSuccess={(assignment) => {
+            console.log('Assignment submitted:', assignment);
+            // TODO: Handle success (maybe show success message and go back to forms)
+            handleBackToForms();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (currentView === 'create-community') {
+    return (
+      <div className="h-full flex flex-col">
+        <CreateCommunityForm
+          onCancel={handleBackToForms}
+          onSuccess={(community) => {
+            console.log('Community created:', community);
+            handleBackToForms();
+          }}
+        />
+      </div>
     );
   }
 
@@ -171,6 +192,19 @@ const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, sele
                 disabled
               >
                 • Travel Expenses (Coming Soon)
+              </button>
+            </div>
+          </div>
+
+          {/* Admin Card */}
+          <div className="bg-surface-secondary rounded-lg border border-primary p-6 hover:shadow-lg transition-shadow theme-transition">
+            <h3 className="text-lg font-semibold text-primary mb-4">Admin</h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleFormClick('Admin', 'Create Community')}
+                className="w-full text-left text-secondary hover:text-primary transition-colors py-2 px-3 rounded hover:bg-surface-tertiary"
+              >
+                • Create Community
               </button>
             </div>
           </div>

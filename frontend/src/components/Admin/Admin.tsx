@@ -1,0 +1,1334 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  CogIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  PlusIcon,
+  PencilIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+  CheckCircleIcon,
+  XCircleIcon
+} from '@heroicons/react/24/outline';
+import AdminDropDownTemplate from './AdminDropDownTemplate/AdminDropDownTemplate';
+import dataService from '../../services/dataService';
+
+interface AdminProps {
+  onClose?: () => void;
+}
+
+type DropdownCategory = 
+  | 'client-type' 
+  | 'service-type'
+  | 'management-type'
+  | 'development-stage'
+  | 'acquisition-type'
+  | 'role-management' 
+  | 'stakeholder-types' 
+  | 'access-levels'
+  | 'preferred-contact-methods'
+  | 'status'
+  | 'ticket-statuses';
+type AdminCategory = 'dynamic-drop-choices' | 'other';
+type AdminView = 'categories' | AdminCategory | DropdownCategory;
+
+interface DropdownChoice {
+  ChoiceID: string;
+  GroupID: string;
+  ChoiceValue: string;
+  DisplayOrder: number;
+  IsDefault: boolean;
+  IsActive: boolean;
+  IsSystemManaged?: boolean;
+}
+
+const Admin: React.FC<AdminProps> = ({ onClose }) => {
+  const [currentView, setCurrentView] = useState<AdminView>('categories');
+  const [expandedLevels, setExpandedLevels] = useState<Set<number>>(new Set([1, 2, 3]));
+  const [expandedStakeholderTypes, setExpandedStakeholderTypes] = useState<Set<string>>(new Set());
+  const [clientTypeChoices, setClientTypeChoices] = useState<DropdownChoice[]>([]);
+  const [serviceTypeChoices, setServiceTypeChoices] = useState<DropdownChoice[]>([]);
+  const [managementTypeChoices, setManagementTypeChoices] = useState<DropdownChoice[]>([]);
+  const [developmentStageChoices, setDevelopmentStageChoices] = useState<DropdownChoice[]>([]);
+  const [acquisitionTypeChoices, setAcquisitionTypeChoices] = useState<DropdownChoice[]>([]);
+  const [stakeholderTypeChoices, setStakeholderTypeChoices] = useState<DropdownChoice[]>([]);
+  const [stakeholderSubTypes, setStakeholderSubTypes] = useState<Record<string, DropdownChoice[]>>({});
+  const [accessLevelChoices, setAccessLevelChoices] = useState<DropdownChoice[]>([]);
+  const [preferredContactMethodChoices, setPreferredContactMethodChoices] = useState<DropdownChoice[]>([]);
+  const [statusChoices, setStatusChoices] = useState<DropdownChoice[]>([]);
+  const [ticketStatusChoices, setTicketStatusChoices] = useState<DropdownChoice[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [editingChoice, setEditingChoice] = useState<DropdownChoice | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+  const [addingNew, setAddingNew] = useState(false);
+  const [newChoiceValue, setNewChoiceValue] = useState('');
+  const [addingSubTypeFor, setAddingSubTypeFor] = useState<string | null>(null);
+  const [newSubTypeValue, setNewSubTypeValue] = useState('');
+
+  const toggleLevel = (level: number) => {
+    setExpandedLevels(prev => {
+      const next = new Set(prev);
+      if (next.has(level)) {
+        next.delete(level);
+      } else {
+        next.add(level);
+      }
+      return next;
+    });
+  };
+
+  const roleHierarchy = [
+    {
+      level: 0,
+      name: 'Community User',
+      description: 'Works directly for the community (Resident/Other with edit access - rare)',
+      titles: [
+        { id: 'guid-001', name: 'Community Employee', displayOrder: 1 }
+      ]
+    },
+    {
+      level: 1,
+      name: 'Assistant',
+      description: 'Company employee, entry-level (view-only, some confidential info)',
+      titles: [
+        { id: 'guid-002', name: 'Manager in Training', displayOrder: 1 },
+        { id: 'guid-003', name: 'Maintenance Coordinator', displayOrder: 2 },
+        { id: 'guid-004', name: 'Compliance Specialist', displayOrder: 3 },
+        { id: 'guid-005', name: 'Accounting Specialist', displayOrder: 4 },
+        { id: 'guid-006', name: 'General Assistant', displayOrder: 5 },
+        { id: 'guid-007', name: 'Front Desk', displayOrder: 6 }
+      ]
+    },
+    {
+      level: 2,
+      name: 'Manager',
+      description: 'Company employee, manages assistants (can edit community info)',
+      titles: [
+        { id: 'guid-008', name: 'CAM', displayOrder: 1 },
+        { id: 'guid-009', name: 'Onsite', displayOrder: 2 }
+      ]
+    },
+    {
+      level: 3,
+      name: 'Director',
+      description: 'Company employee, oversees managers (can edit community info, oversees managers)',
+      titles: [
+        { id: 'guid-010', name: 'Regional Director', displayOrder: 1 }
+      ]
+    }
+  ];
+
+  const mainCategories = [
+    { 
+      id: 'dynamic-drop-choices' as AdminCategory, 
+      name: 'Dynamic Drop Choices', 
+      icon: CogIcon,
+      description: 'Manage all dropdown options and choices used throughout the system'
+    }
+    // Future: Add other admin sections here
+    // { id: 'permissions' as AdminCategory, name: 'Permissions', icon: CogIcon, description: '...' }
+  ];
+
+  const dropdownCategories = [
+    // Community Dropdowns
+    { id: 'client-type' as DropdownCategory, name: 'Client Type', description: 'Manage client type options (HOA, Condo, Commercial, etc.)' },
+    { id: 'service-type' as DropdownCategory, name: 'Service Type', description: 'Manage service type options (Full Service, Hybrid, Accounting Only, etc.)' },
+    { id: 'management-type' as DropdownCategory, name: 'Management Type', description: 'Manage management type options (Portfolio, Onsite, Hybrid)' },
+    { id: 'development-stage' as DropdownCategory, name: 'Development Stage', description: 'Manage development stage options (Homeowner Controlled, Declarant Controlled)' },
+    { id: 'acquisition-type' as DropdownCategory, name: 'Acquisition Type', description: 'Manage acquisition type options (Organic, Acquisition)' },
+    // Stakeholder Dropdowns
+    { id: 'stakeholder-types' as DropdownCategory, name: 'Stakeholder Types', description: 'Configure stakeholder types and subtypes' },
+    { id: 'access-levels' as DropdownCategory, name: 'Access Levels', description: 'Configure access levels and permissions (None, View, View+Write, View+Write+Delete)' },
+    { id: 'preferred-contact-methods' as DropdownCategory, name: 'Preferred Contact Methods', description: 'Manage preferred contact method options (Email, Phone, Mobile, Text, Mail)' },
+    { id: 'status' as DropdownCategory, name: 'Status', description: 'Manage status options (Active, Inactive, Pending, Suspended)' },
+    // Ticket Dropdowns
+    { id: 'ticket-statuses' as DropdownCategory, name: 'Ticket Statuses', description: 'Manage ticket status options (Pending, InProgress, Hold, Completed, Rejected)' },
+    // Other
+    { id: 'role-management' as DropdownCategory, name: 'Role Management', description: 'Manage role hierarchy and titles for community assignments' }
+  ];
+
+  // Get description for system-managed choices
+  const getSystemManagedDescription = (choiceValue: string, groupId: string): string => {
+    if (groupId === 'stakeholder-types') {
+      const descriptions: Record<string, string> = {
+        'Resident': 'Homeowners, tenants, and other community residents',
+        'Staff': 'Employee of the management company',
+        'Vendor': 'External contractors, service providers, and suppliers',
+        'Other': 'Other stakeholder types not covered by the above categories'
+      };
+      return descriptions[choiceValue] || '';
+    }
+    if (groupId === 'access-levels') {
+      const descriptions: Record<string, string> = {
+        'None': 'No access to any sections',
+        'View': 'Can view information but cannot make changes',
+        'View+Write': 'Can view and edit information but cannot delete',
+        'View+Write+Delete': 'Full access: can view, edit, and delete information'
+      };
+      return descriptions[choiceValue] || '';
+    }
+    return '';
+  };
+
+  const getBreadcrumbs = (): Array<{ label: string; onClick?: () => void; isActive?: boolean }> => {
+    const base: Array<{ label: string; onClick?: () => void; isActive?: boolean }> = [
+      { 
+        label: 'Community Info', 
+        onClick: () => {
+          window.dispatchEvent(new CustomEvent('overlay:close'));
+        }
+      },
+      { 
+        label: 'Admin',
+        onClick: () => setCurrentView('categories')
+      }
+    ];
+
+    if (currentView === 'dynamic-drop-choices') {
+      base.push({ 
+        label: 'Dynamic Drop Choices',
+        onClick: () => setCurrentView('dynamic-drop-choices'),
+        isActive: true
+      });
+    } else if (currentView !== 'categories' && (currentView as string) !== 'dynamic-drop-choices') {
+      // We're in a dropdown category
+      base.push({ 
+        label: 'Dynamic Drop Choices',
+        onClick: () => setCurrentView('dynamic-drop-choices')
+      });
+      const categoryNames: Record<DropdownCategory, string> = {
+        'client-type': 'Client Type',
+        'service-type': 'Service Type',
+        'management-type': 'Management Type',
+        'development-stage': 'Development Stage',
+        'acquisition-type': 'Acquisition Type',
+        'stakeholder-types': 'Stakeholder Types',
+        'access-levels': 'Access Levels',
+        'preferred-contact-methods': 'Preferred Contact Methods',
+        'status': 'Status',
+        'ticket-statuses': 'Ticket Statuses',
+        'role-management': 'Role Management'
+      };
+      base.push({ label: categoryNames[currentView as DropdownCategory], isActive: true });
+    } else {
+      if (base.length > 0) {
+        base[base.length - 1].isActive = true;
+      }
+    }
+
+    return base;
+  };
+
+
+  // Load choices based on current view
+  useEffect(() => {
+    if (currentView === 'client-type') {
+      loadClientTypeChoices();
+    } else if (currentView === 'service-type') {
+      loadServiceTypeChoices();
+    } else if (currentView === 'management-type') {
+      loadManagementTypeChoices();
+    } else if (currentView === 'development-stage') {
+      loadDevelopmentStageChoices();
+    } else if (currentView === 'acquisition-type') {
+      loadAcquisitionTypeChoices();
+    } else if (currentView === 'stakeholder-types') {
+      loadStakeholderTypeChoices();
+    } else if (currentView === 'access-levels') {
+      loadAccessLevelChoices();
+    } else if (currentView === 'preferred-contact-methods') {
+      loadPreferredContactMethodChoices();
+    } else if (currentView === 'status') {
+      loadStatusChoices();
+    } else if (currentView === 'ticket-statuses') {
+      loadTicketStatusChoices();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView]);
+
+  const loadClientTypeChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['client-types'], true);
+      const choices = data['client-types'] || [];
+      choices.sort((a: DropdownChoice, b: DropdownChoice) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setClientTypeChoices(choices);
+    } catch (error) {
+      console.error('Error loading client type choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStakeholderTypeChoices = async () => {
+    setLoading(true);
+    try {
+      // Load Types
+      const typeData = await dataService.getDynamicDropChoices(['stakeholder-types'], true);
+      const types = (typeData['stakeholder-types'] || []) as DropdownChoice[];
+      types.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setStakeholderTypeChoices(types);
+
+      // Load SubTypes for each Type (using group naming convention)
+      const subTypeGroups = [
+        'stakeholder-subtypes-resident',
+        'stakeholder-subtypes-staff',
+        'stakeholder-subtypes-vendor',
+        'stakeholder-subtypes-other'
+      ];
+      const subTypesData = await dataService.getDynamicDropChoices(subTypeGroups, true);
+      
+      // Group SubTypes by Type (map group name to type)
+      const grouped: Record<string, DropdownChoice[]> = {};
+      types.forEach((type) => {
+        const typeName = type.ChoiceValue.toLowerCase();
+        const groupKey = `stakeholder-subtypes-${typeName}`;
+        const subTypes = (subTypesData[groupKey] || []) as DropdownChoice[];
+        subTypes.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+        grouped[type.ChoiceID] = subTypes;
+      });
+      
+      setStakeholderSubTypes(grouped);
+    } catch (error) {
+      console.error('Error loading stakeholder type choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadServiceTypeChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['service-types'], true);
+      const choices = (data['service-types'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setServiceTypeChoices(choices);
+    } catch (error) {
+      console.error('Error loading service type choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadManagementTypeChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['management-types'], true);
+      const choices = (data['management-types'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setManagementTypeChoices(choices);
+    } catch (error) {
+      console.error('Error loading management type choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDevelopmentStageChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['development-stages'], true);
+      const choices = (data['development-stages'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setDevelopmentStageChoices(choices);
+    } catch (error) {
+      console.error('Error loading development stage choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAcquisitionTypeChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['acquisition-types'], true);
+      const choices = (data['acquisition-types'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setAcquisitionTypeChoices(choices);
+    } catch (error) {
+      console.error('Error loading acquisition type choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAccessLevelChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['access-levels'], true);
+      const choices = (data['access-levels'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setAccessLevelChoices(choices);
+    } catch (error) {
+      console.error('Error loading access level choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPreferredContactMethodChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['preferred-contact-methods'], true);
+      const choices = (data['preferred-contact-methods'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setPreferredContactMethodChoices(choices);
+    } catch (error) {
+      console.error('Error loading preferred contact method choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStatusChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['status'], true);
+      const choices = (data['status'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setStatusChoices(choices);
+    } catch (error) {
+      console.error('Error loading status choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTicketStatusChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['ticket-statuses'], true);
+      const choices = (data['ticket-statuses'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setTicketStatusChoices(choices);
+    } catch (error) {
+      console.error('Error loading ticket status choices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Generic handlers that work with current view
+  const getCurrentChoices = (): DropdownChoice[] => {
+    if (currentView === 'client-type') return clientTypeChoices;
+    if (currentView === 'service-type') return serviceTypeChoices;
+    if (currentView === 'management-type') return managementTypeChoices;
+    if (currentView === 'development-stage') return developmentStageChoices;
+    if (currentView === 'acquisition-type') return acquisitionTypeChoices;
+    if (currentView === 'stakeholder-types') return stakeholderTypeChoices;
+    if (currentView === 'access-levels') return accessLevelChoices;
+    if (currentView === 'preferred-contact-methods') return preferredContactMethodChoices;
+    if (currentView === 'status') return statusChoices;
+    if (currentView === 'ticket-statuses') return ticketStatusChoices;
+    return [];
+  };
+
+  const getCurrentGroupId = (): string => {
+    const groupIdMap: Record<DropdownCategory, string> = {
+      'client-type': 'client-types',
+      'service-type': 'service-types',
+      'management-type': 'management-types',
+      'development-stage': 'development-stages',
+      'acquisition-type': 'acquisition-types',
+      'stakeholder-types': 'stakeholder-types',
+      'access-levels': 'access-levels',
+      'preferred-contact-methods': 'preferred-contact-methods',
+      'status': 'status',
+      'ticket-statuses': 'ticket-statuses',
+      'role-management': '' // Not a dropdown group
+    };
+    return groupIdMap[currentView as DropdownCategory] || '';
+  };
+
+  const reloadCurrentChoices = () => {
+    if (currentView === 'client-type') loadClientTypeChoices();
+    else if (currentView === 'service-type') loadServiceTypeChoices();
+    else if (currentView === 'management-type') loadManagementTypeChoices();
+    else if (currentView === 'development-stage') loadDevelopmentStageChoices();
+    else if (currentView === 'acquisition-type') loadAcquisitionTypeChoices();
+    else if (currentView === 'stakeholder-types') loadStakeholderTypeChoices();
+    else if (currentView === 'access-levels') loadAccessLevelChoices();
+    else if (currentView === 'preferred-contact-methods') loadPreferredContactMethodChoices();
+    else if (currentView === 'status') loadStatusChoices();
+    else if (currentView === 'ticket-statuses') loadTicketStatusChoices();
+  };
+
+  const handleMoveUp = async (index: number) => {
+    const choices = getCurrentChoices();
+    if (index === 0) return;
+    const newChoices = [...choices];
+    [newChoices[index - 1], newChoices[index]] = [newChoices[index], newChoices[index - 1]];
+    
+    if (currentView === 'client-type') setClientTypeChoices(newChoices);
+    else if (currentView === 'service-type') setServiceTypeChoices(newChoices);
+    else if (currentView === 'management-type') setManagementTypeChoices(newChoices);
+    else if (currentView === 'development-stage') setDevelopmentStageChoices(newChoices);
+    else if (currentView === 'acquisition-type') setAcquisitionTypeChoices(newChoices);
+    else if (currentView === 'stakeholder-types') setStakeholderTypeChoices(newChoices);
+    else if (currentView === 'access-levels') setAccessLevelChoices(newChoices);
+    else if (currentView === 'preferred-contact-methods') setPreferredContactMethodChoices(newChoices);
+    else if (currentView === 'status') setStatusChoices(newChoices);
+    else if (currentView === 'ticket-statuses') setTicketStatusChoices(newChoices);
+    
+    await saveOrder(newChoices);
+  };
+
+  const handleMoveDown = async (index: number) => {
+    const choices = getCurrentChoices();
+    if (index === choices.length - 1) return;
+    const newChoices = [...choices];
+    [newChoices[index], newChoices[index + 1]] = [newChoices[index + 1], newChoices[index]];
+    
+    if (currentView === 'client-type') setClientTypeChoices(newChoices);
+    else if (currentView === 'service-type') setServiceTypeChoices(newChoices);
+    else if (currentView === 'management-type') setManagementTypeChoices(newChoices);
+    else if (currentView === 'development-stage') setDevelopmentStageChoices(newChoices);
+    else if (currentView === 'acquisition-type') setAcquisitionTypeChoices(newChoices);
+    else if (currentView === 'stakeholder-types') setStakeholderTypeChoices(newChoices);
+    else if (currentView === 'access-levels') setAccessLevelChoices(newChoices);
+    else if (currentView === 'preferred-contact-methods') setPreferredContactMethodChoices(newChoices);
+    else if (currentView === 'status') setStatusChoices(newChoices);
+    else if (currentView === 'ticket-statuses') setTicketStatusChoices(newChoices);
+    
+    await saveOrder(newChoices);
+  };
+
+  const handleSubTypeMoveUp = async (parentTypeId: string, subTypeIndex: number) => {
+    const subTypes = stakeholderSubTypes[parentTypeId] || [];
+    if (subTypeIndex === 0) return;
+    
+    const newSubTypes = [...subTypes];
+    [newSubTypes[subTypeIndex - 1], newSubTypes[subTypeIndex]] = [newSubTypes[subTypeIndex], newSubTypes[subTypeIndex - 1]];
+    
+    // Get the parent type to determine group ID
+    const parentType = stakeholderTypeChoices.find(t => t.ChoiceID === parentTypeId);
+    if (!parentType) return;
+    const typeName = parentType.ChoiceValue.toLowerCase();
+    const groupId = `stakeholder-subtypes-${typeName}`;
+    
+    // Update state
+    setStakeholderSubTypes(prev => ({
+      ...prev,
+      [parentTypeId]: newSubTypes
+    }));
+    
+    // Save order
+    try {
+      await dataService.bulkUpdateChoiceOrder(
+        groupId,
+        newSubTypes.map((st) => ({ choiceId: st.ChoiceID }))
+      );
+    } catch (error) {
+      console.error('Error saving subtype order:', error);
+      loadStakeholderTypeChoices(); // Reload on error
+    }
+  };
+
+  const handleSubTypeMoveDown = async (parentTypeId: string, subTypeIndex: number) => {
+    const subTypes = stakeholderSubTypes[parentTypeId] || [];
+    if (subTypeIndex === subTypes.length - 1) return;
+    
+    const newSubTypes = [...subTypes];
+    [newSubTypes[subTypeIndex], newSubTypes[subTypeIndex + 1]] = [newSubTypes[subTypeIndex + 1], newSubTypes[subTypeIndex]];
+    
+    // Get the parent type to determine group ID
+    const parentType = stakeholderTypeChoices.find(t => t.ChoiceID === parentTypeId);
+    if (!parentType) return;
+    const typeName = parentType.ChoiceValue.toLowerCase();
+    const groupId = `stakeholder-subtypes-${typeName}`;
+    
+    // Update state
+    setStakeholderSubTypes(prev => ({
+      ...prev,
+      [parentTypeId]: newSubTypes
+    }));
+    
+    // Save order
+    try {
+      await dataService.bulkUpdateChoiceOrder(
+        groupId,
+        newSubTypes.map((st) => ({ choiceId: st.ChoiceID }))
+      );
+    } catch (error) {
+      console.error('Error saving subtype order:', error);
+      loadStakeholderTypeChoices(); // Reload on error
+    }
+  };
+
+  const saveOrder = async (choices: DropdownChoice[]) => {
+    const groupId = getCurrentGroupId();
+    if (!groupId) return;
+    try {
+      await dataService.bulkUpdateChoiceOrder(
+        groupId,
+        choices.map(c => ({ choiceId: c.ChoiceID }))
+      );
+    } catch (error) {
+      console.error('Error saving order:', error);
+      // Reload on error
+      reloadCurrentChoices();
+    }
+  };
+
+  const handleEdit = (choice: DropdownChoice) => {
+    setEditingChoice(choice);
+    setEditingValue(choice.ChoiceValue);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingChoice || !editingValue.trim()) return;
+    
+    try {
+      await dataService.updateDynamicDropChoice(editingChoice.ChoiceID, {
+        choiceValue: editingValue.trim()
+      });
+      setEditingChoice(null);
+      setEditingValue('');
+      reloadCurrentChoices();
+    } catch (error) {
+      console.error('Error updating choice:', error);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingChoice(null);
+    setEditingValue('');
+  };
+
+  const handleToggleActive = async (choice: DropdownChoice) => {
+    const newActiveStatus = !choice.IsActive;
+    const action = newActiveStatus ? 'activate' : 'deactivate';
+    
+    if (!confirm(`Are you sure you want to ${action} "${choice.ChoiceValue}"? This will ${newActiveStatus ? 'make it available' : 'archive it'} for archival purposes.`)) return;
+    
+    try {
+      await dataService.toggleDynamicDropChoiceActive(choice.ChoiceID, newActiveStatus);
+      reloadCurrentChoices();
+    } catch (error) {
+      console.error('Error toggling active status:', error);
+    }
+  };
+
+  const handleToggleDefault = async (choice: DropdownChoice) => {
+    const newDefaultStatus = !choice.IsDefault;
+    
+    try {
+      await dataService.updateDynamicDropChoice(choice.ChoiceID, {
+        isDefault: newDefaultStatus
+      });
+      reloadCurrentChoices();
+    } catch (error) {
+      console.error('Error setting default:', error);
+    }
+  };
+
+  const handleAddNew = async () => {
+    if (!newChoiceValue.trim()) return;
+    const groupId = getCurrentGroupId();
+    if (!groupId) return;
+    
+    try {
+      await dataService.createDynamicDropChoice({
+        groupId,
+        choiceValue: newChoiceValue.trim()
+      });
+      setNewChoiceValue('');
+      setAddingNew(false);
+      reloadCurrentChoices();
+    } catch (error) {
+      console.error('Error creating choice:', error);
+    }
+  };
+
+  const handleAddSubType = async (parentTypeId: string) => {
+    if (!newSubTypeValue.trim()) return;
+    
+    try {
+      // Get the parent type to determine group ID
+      const parentType = stakeholderTypeChoices.find(t => t.ChoiceID === parentTypeId);
+      if (!parentType) return;
+
+      // Map type name to subtype group ID
+      const typeName = parentType.ChoiceValue.toLowerCase();
+      const groupId = `stakeholder-subtypes-${typeName}`;
+
+      // Get current max display order for subtypes of this type
+      const subTypes = stakeholderSubTypes[parentTypeId] || [];
+      const maxOrder = subTypes.length > 0 ? Math.max(...subTypes.map(st => st.DisplayOrder || 0)) : 0;
+
+      await dataService.createDynamicDropChoice({
+        groupId,
+        choiceValue: newSubTypeValue.trim(),
+        displayOrder: maxOrder + 1
+      });
+      
+      setNewSubTypeValue('');
+      setAddingSubTypeFor(null);
+      loadStakeholderTypeChoices(); // Reload to get the new subtype
+    } catch (error) {
+      console.error('Error creating subtype:', error);
+    }
+  };
+
+  // Check if current view allows adding new items
+  const canAddNew = (): boolean => {
+    // Block creation for system-managed groups
+    return currentView !== 'stakeholder-types' && currentView !== 'access-levels';
+  };
+
+  // Generic render function for dropdown management
+  const renderDropdownManagement = (title: string, description: string) => {
+    const choices = getCurrentChoices();
+    const groupId = getCurrentGroupId();
+    const groupName = groupId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const allowAddNew = canAddNew();
+    
+    return (
+      <div className="space-y-4">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-primary mb-2">{title}</h2>
+          <p className="text-sm text-secondary">{description}</p>
+          {!allowAddNew && (
+            <div className="mt-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                <strong>Note:</strong> New choices cannot be created for this group as it is system-managed and required for core functionality. These options are displayed for reference and explanation purposes.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12">
+            <p className="text-secondary">Loading...</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-surface-secondary border border-primary rounded-lg overflow-hidden">
+              <div className="p-4 flex items-center justify-between border-b border-primary">
+                <h3 className="text-lg font-semibold text-primary">{groupName}</h3>
+                {!addingNew && allowAddNew && (
+                  <button
+                    onClick={() => setAddingNew(true)}
+                    className="flex items-center space-x-1 px-3 py-1 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    <span>Add New</span>
+                  </button>
+                )}
+              </div>
+
+              {addingNew && (
+                <div className="p-4 border-b border-primary bg-surface">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={newChoiceValue}
+                      onChange={(e) => setNewChoiceValue(e.target.value)}
+                      placeholder={`Enter ${groupName.toLowerCase()} name`}
+                      className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAddNew();
+                        if (e.key === 'Escape') {
+                          setAddingNew(false);
+                          setNewChoiceValue('');
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleAddNew}
+                      className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddingNew(false);
+                        setNewChoiceValue('');
+                      }}
+                      className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {choices.length === 0 ? (
+                <div className="p-4 text-center text-secondary text-sm">
+                  No choices configured. Click "Add New" to create one.
+                </div>
+              ) : (
+                <div className="divide-y divide-primary">
+                  {choices
+                    .filter(c => c.IsActive) // Show active items first
+                    .concat(choices.filter(c => !c.IsActive)) // Then inactive items
+                    .map((choice, index) => {
+                      // Calculate display index for reordering (only active items can be reordered)
+                      const activeChoices = choices.filter(c => c.IsActive);
+                      const activeIndex = activeChoices.indexOf(choice);
+                      const displayIndex = activeIndex >= 0 ? activeIndex : activeChoices.length;
+                      return (
+                    <div key={choice.ChoiceID} className={`p-4 flex items-center justify-between transition-colors ${choice.IsActive ? 'hover:bg-surface-tertiary' : 'bg-gray-50 dark:bg-gray-900/20 opacity-75'}`}>
+                      {editingChoice?.ChoiceID === choice.ChoiceID ? (
+                        <div className="flex items-center space-x-2 flex-1">
+                          <input
+                            type="text"
+                            value={editingValue}
+                            onChange={(e) => setEditingValue(e.target.value)}
+                            className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveEdit();
+                              if (e.key === 'Escape') handleCancelEdit();
+                            }}
+                            autoFocus
+                          />
+                          <button
+                            onClick={handleSaveEdit}
+                            className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center space-x-4 flex-1">
+                            <div className="flex flex-col space-y-1">
+                              <div className="flex items-center space-x-2">
+                                <span className={`text-primary font-medium ${!choice.IsActive ? 'opacity-50 line-through' : ''}`}>
+                                  {choice.ChoiceValue}
+                                </span>
+                                {choice.IsDefault && (
+                                  <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded text-xs font-medium">
+                                    Default
+                                  </span>
+                                )}
+                                {choice.IsSystemManaged && (
+                                  <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded text-xs font-medium">
+                                    System Managed
+                                  </span>
+                                )}
+                                {!choice.IsActive && (
+                                  <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs font-medium">
+                                    Inactive
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs text-tertiary font-mono">GUID: {choice.ChoiceID}</span>
+                              {/* Description/Note area - can be expanded later with a Description field */}
+                              {choice.IsSystemManaged && (
+                                <div className="mt-1 text-xs text-secondary italic">
+                                  {getSystemManagedDescription(choice.ChoiceValue, choice.GroupID)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleMoveUp(displayIndex)}
+                              disabled={displayIndex === 0 || choice.IsSystemManaged || !choice.IsActive}
+                              className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              title={choice.IsSystemManaged ? "System-managed items cannot be reordered" : !choice.IsActive ? "Activate to reorder" : "Move up"}
+                            >
+                              <ArrowUpIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleMoveDown(displayIndex)}
+                              disabled={displayIndex === choices.filter(c => c.IsActive).length - 1 || choice.IsSystemManaged || !choice.IsActive}
+                              className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              title={choice.IsSystemManaged ? "System-managed items cannot be reordered" : !choice.IsActive ? "Activate to reorder" : "Move down"}
+                            >
+                              <ArrowDownIcon className="w-4 h-4" />
+                            </button>
+                            {/* Default Toggle */}
+                            <label className="flex items-center space-x-1 cursor-pointer" title={choice.IsSystemManaged ? "System-managed items cannot change default" : choice.IsDefault ? "This is the default option" : "Set as default"}>
+                              <input
+                                type="checkbox"
+                                checked={choice.IsDefault || false}
+                                onChange={() => handleToggleDefault(choice)}
+                                disabled={choice.IsSystemManaged}
+                                className="w-4 h-4 text-royal-600 rounded focus:ring-royal-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                              />
+                              <span className="text-xs text-tertiary">Default</span>
+                            </label>
+                            
+                            {/* Active/Inactive Toggle */}
+                            <button
+                              onClick={() => handleToggleActive(choice)}
+                              disabled={choice.IsSystemManaged}
+                              className={`p-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                                choice.IsActive
+                                  ? 'text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300'
+                                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                              }`}
+                              title={choice.IsSystemManaged ? "System-managed items cannot be deactivated" : choice.IsActive ? "Deactivate (archive)" : "Activate"}
+                            >
+                              {choice.IsActive ? (
+                                <CheckCircleIcon className="w-5 h-5" />
+                              ) : (
+                                <XCircleIcon className="w-5 h-5" />
+                              )}
+                            </button>
+                            
+                            <button
+                              onClick={() => handleEdit(choice)}
+                              disabled={choice.IsSystemManaged || !choice.IsActive}
+                              className="p-2 text-tertiary hover:text-royal-600 dark:hover:text-royal-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              title={choice.IsSystemManaged ? "System-managed items cannot be edited" : !choice.IsActive ? "Activate to edit" : "Edit"}
+                            >
+                              <PencilIcon className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const toggleStakeholderType = (typeId: string) => {
+    setExpandedStakeholderTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(typeId)) {
+        next.delete(typeId);
+      } else {
+        next.add(typeId);
+      }
+      return next;
+    });
+  };
+
+  const renderStakeholderTypesManagement = () => {
+    return (
+      <div className="space-y-4">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-primary mb-2">Stakeholder Types Management</h2>
+          <p className="text-sm text-secondary">
+            Manage stakeholder types and their subtypes. Types (Resident, Staff, Vendor, Other) are system-managed and immutable. SubTypes are fully editable.
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12">
+            <p className="text-secondary">Loading...</p>
+          </div>
+        ) : (
+          stakeholderTypeChoices.map((type) => {
+            const subTypes = stakeholderSubTypes[type.ChoiceID] || [];
+            return (
+              <div key={type.ChoiceID} className="bg-surface-secondary border border-primary rounded-lg overflow-hidden">
+                {/* Type Header */}
+                <div 
+                  className="p-4 flex items-center justify-between cursor-pointer hover:bg-surface-tertiary transition-colors"
+                  onClick={() => toggleStakeholderType(type.ChoiceID)}
+                >
+                  <div className="flex items-center space-x-3">
+                    {expandedStakeholderTypes.has(type.ChoiceID) ? (
+                      <ChevronDownIcon className="w-5 h-5 text-tertiary" />
+                    ) : (
+                      <ChevronRightIcon className="w-5 h-5 text-tertiary" />
+                    )}
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-lg font-semibold text-primary">{type.ChoiceValue}</span>
+                        <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded text-xs font-medium">
+                          System Managed
+                        </span>
+                        <span className="px-2 py-1 bg-royal-100 dark:bg-royal-900/30 text-royal-600 dark:text-royal-400 rounded text-xs font-medium">
+                          {subTypes.length} {subTypes.length === 1 ? 'subtype' : 'subtypes'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-secondary mt-1">
+                        {getSystemManagedDescription(type.ChoiceValue, 'Type')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SubTypes List */}
+                {expandedStakeholderTypes.has(type.ChoiceID) && (
+                  <div className="border-t border-primary bg-surface">
+                    {/* SubTypes Section Header with Add Button */}
+                    <div className="p-4 flex items-center justify-between border-b border-primary bg-surface-secondary">
+                      <h3 className="text-lg font-semibold text-primary">SubTypes</h3>
+                      {!addingSubTypeFor && (
+                        <button
+                          onClick={() => {
+                            setAddingSubTypeFor(type.ChoiceID);
+                            setNewSubTypeValue('');
+                          }}
+                          className="flex items-center space-x-1 px-3 py-1 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                        >
+                          <PlusIcon className="w-4 h-4" />
+                          <span>Add SubType</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Add SubType Input */}
+                    {addingSubTypeFor === type.ChoiceID && (
+                      <div className="p-4 border-b border-primary bg-surface-tertiary">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={newSubTypeValue}
+                            onChange={(e) => setNewSubTypeValue(e.target.value)}
+                            placeholder="Enter subtype name"
+                            className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddSubType(type.ChoiceID);
+                              if (e.key === 'Escape') {
+                                setAddingSubTypeFor(null);
+                                setNewSubTypeValue('');
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleAddSubType(type.ChoiceID)}
+                            className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => {
+                              setAddingSubTypeFor(null);
+                              setNewSubTypeValue('');
+                            }}
+                            className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {subTypes.length === 0 ? (
+                      <div className="p-4 text-center text-secondary text-sm">
+                        {addingSubTypeFor === type.ChoiceID 
+                          ? 'Enter a subtype name above and click Save.'
+                          : 'No subtypes configured. Click "Add SubType" to create one.'}
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-primary">
+                        {subTypes.map((subType, index) => (
+                          <div key={subType.ChoiceID} className="p-4 flex items-center justify-between hover:bg-surface-tertiary transition-colors">
+                            <div className="flex items-center space-x-4 flex-1">
+                              <div className="flex flex-col space-y-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className={`text-primary font-medium ${!subType.IsActive ? 'opacity-50 line-through' : ''}`}>
+                                    {subType.ChoiceValue}
+                                  </span>
+                                  {subType.IsDefault && (
+                                    <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded text-xs font-medium">
+                                      Default
+                                    </span>
+                                  )}
+                                  {!subType.IsActive && (
+                                    <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs font-medium">
+                                      Inactive
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-tertiary font-mono">GUID: {subType.ChoiceID}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleSubTypeMoveUp(type.ChoiceID, index)}
+                                disabled={index === 0 || !subType.IsActive}
+                                className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="Move up"
+                              >
+                                <ArrowUpIcon className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleSubTypeMoveDown(type.ChoiceID, index)}
+                                disabled={index === subTypes.length - 1 || !subType.IsActive}
+                                className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="Move down"
+                              >
+                                <ArrowDownIcon className="w-4 h-4" />
+                              </button>
+                              {/* Default Toggle */}
+                              <label className="flex items-center space-x-1 cursor-pointer" title={subType.IsDefault ? "This is the default option" : "Set as default"}>
+                                <input
+                                  type="checkbox"
+                                  checked={subType.IsDefault || false}
+                                  onChange={() => handleToggleDefault(subType)}
+                                  className="w-4 h-4 text-royal-600 rounded focus:ring-royal-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                                />
+                                <span className="text-xs text-tertiary">Default</span>
+                              </label>
+                              <button
+                                onClick={() => handleToggleActive(subType)}
+                                className={`p-2 transition-colors ${
+                                  subType.IsActive
+                                    ? 'text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300'
+                                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                }`}
+                                title={subType.IsActive ? "Deactivate (archive)" : "Activate"}
+                              >
+                                {subType.IsActive ? (
+                                  <CheckCircleIcon className="w-5 h-5" />
+                                ) : (
+                                  <XCircleIcon className="w-5 h-5" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleEdit(subType)}
+                                disabled={!subType.IsActive}
+                                className="p-2 text-tertiary hover:text-royal-600 dark:hover:text-royal-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title={!subType.IsActive ? "Activate to edit" : "Edit"}
+                              >
+                                <PencilIcon className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
+  const renderRoleManagement = () => {
+    return (
+      <div className="space-y-4">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-primary mb-2">Role Hierarchy Management</h2>
+          <p className="text-sm text-secondary">
+            Manage role types and titles for community assignments. Hierarchy levels (0-3) are hard-locked for permission control.
+          </p>
+        </div>
+
+        {roleHierarchy.map((role) => (
+          <div key={role.level} className="bg-surface-secondary border border-primary rounded-lg overflow-hidden">
+            {/* Level Header */}
+            <div 
+              className="p-4 flex items-center justify-between cursor-pointer hover:bg-surface-tertiary transition-colors"
+              onClick={() => toggleLevel(role.level)}
+            >
+              <div className="flex items-center space-x-3">
+                {expandedLevels.has(role.level) ? (
+                  <ChevronDownIcon className="w-5 h-5 text-tertiary" />
+                ) : (
+                  <ChevronRightIcon className="w-5 h-5 text-tertiary" />
+                )}
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg font-semibold text-primary">
+                      Level {role.level}: {role.name}
+                    </span>
+                    <span className="px-2 py-1 bg-royal-100 dark:bg-royal-900/30 text-royal-600 dark:text-royal-400 rounded text-xs font-medium">
+                      {role.titles.length} {role.titles.length === 1 ? 'title' : 'titles'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-secondary mt-1">{role.description}</p>
+                </div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // TODO: Add new title
+                }}
+                className="flex items-center space-x-1 px-3 py-1 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+              >
+                <PlusIcon className="w-4 h-4" />
+                <span>Add Title</span>
+              </button>
+            </div>
+
+            {/* Titles List */}
+            {expandedLevels.has(role.level) && (
+              <div className="border-t border-primary bg-surface">
+                {role.titles.length === 0 ? (
+                  <div className="p-4 text-center text-secondary text-sm">
+                    No titles configured. Click "Add Title" to create one.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-primary">
+                    {role.titles.map((title, index) => (
+                      <div key={title.id} className="p-4 flex items-center justify-between hover:bg-surface-tertiary transition-colors">
+                        <div className="flex items-center space-x-4 flex-1">
+                          <div className="flex flex-col space-y-1">
+                            <span className="text-primary font-medium">{title.name}</span>
+                            <span className="text-xs text-tertiary font-mono">GUID: {title.id}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => {/* TODO: Move up */}}
+                            disabled={index === 0}
+                            className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            title="Move up"
+                          >
+                            <ArrowUpIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {/* TODO: Move down */}}
+                            disabled={index === role.titles.length - 1}
+                            className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            title="Move down"
+                          >
+                            <ArrowDownIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {/* TODO: Edit */}}
+                            className="p-2 text-tertiary hover:text-royal-600 dark:hover:text-royal-400 transition-colors"
+                            title="Edit"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <AdminDropDownTemplate
+      title="Admin Portal"
+      description="Manage system configuration and dropdown options"
+      onClose={onClose}
+      breadcrumbs={getBreadcrumbs()}
+    >
+          {/* Main Categories View */}
+          {currentView === 'categories' && (
+            <div>
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-primary mb-2">Admin Categories</h2>
+                <p className="text-sm text-secondary">Select a category to manage system configuration options</p>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {mainCategories.map((category) => {
+                  const Icon = category.icon;
+                  return (
+                    <button
+                      key={category.id}
+                      onClick={() => setCurrentView(category.id)}
+                      className="bg-surface-secondary rounded-lg border border-primary p-6 hover:shadow-lg transition-all hover:-translate-y-1 text-left theme-transition"
+                    >
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="p-2 bg-royal-100 dark:bg-royal-900/30 rounded-lg">
+                          <Icon className="w-6 h-6 text-royal-600 dark:text-royal-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-primary">{category.name}</h3>
+                      </div>
+                      <p className="text-sm text-secondary">{category.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Drop Choices - Subcategories */}
+          {currentView === 'dynamic-drop-choices' && (
+            <div>
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-primary mb-2">Dynamic Drop Choices</h2>
+                <p className="text-sm text-secondary">Manage dropdown options and choices used throughout the system</p>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {dropdownCategories.map((category) => {
+                  return (
+                    <button
+                      key={category.id}
+                      onClick={() => setCurrentView(category.id)}
+                      className="bg-surface-secondary rounded-lg border border-primary p-6 hover:shadow-lg transition-all hover:-translate-y-1 text-left theme-transition"
+                    >
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="p-2 bg-royal-100 dark:bg-royal-900/30 rounded-lg">
+                          <CogIcon className="w-6 h-6 text-royal-600 dark:text-royal-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-primary">{category.name}</h3>
+                      </div>
+                      <p className="text-sm text-secondary">{category.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Dropdown Category Content Views */}
+          {currentView !== 'categories' && currentView !== 'dynamic-drop-choices' && (
+            <div>
+              {/* Community Dropdowns */}
+              {currentView === 'client-type' && renderDropdownManagement(
+                'Client Type Management',
+                'Manage client type options for communities. The order you see here is the order they will appear in dropdowns.'
+              )}
+              {currentView === 'service-type' && renderDropdownManagement(
+                'Service Type Management',
+                'Manage service type options for communities (Full Service, Hybrid, Accounting Only, Compliance Only).'
+              )}
+              {currentView === 'management-type' && renderDropdownManagement(
+                'Management Type Management',
+                'Manage management type options for communities (Portfolio, Onsite, Hybrid).'
+              )}
+              {currentView === 'development-stage' && renderDropdownManagement(
+                'Development Stage Management',
+                'Manage development stage options for communities (Homeowner Controlled, Declarant Controlled).'
+              )}
+              {currentView === 'acquisition-type' && renderDropdownManagement(
+                'Acquisition Type Management',
+                'Manage acquisition type options for communities (Organic, Acquisition).'
+              )}
+              {/* Stakeholder Dropdowns */}
+              {currentView === 'stakeholder-types' && renderStakeholderTypesManagement()}
+              {currentView === 'access-levels' && renderDropdownManagement(
+                'Access Levels Management',
+                'Manage access levels (None, View, View+Write, View+Write+Delete). System-managed levels cannot be edited or deleted as they are required for permission control.'
+              )}
+              {currentView === 'preferred-contact-methods' && renderDropdownManagement(
+                'Preferred Contact Methods Management',
+                'Manage preferred contact method options (Email, Phone, Mobile, Text, Mail).'
+              )}
+              {currentView === 'status' && renderDropdownManagement(
+                'Status Management',
+                'Manage status options (Active, Inactive, Pending, Suspended).'
+              )}
+              {currentView === 'ticket-statuses' && renderDropdownManagement(
+                'Ticket Statuses Management',
+                'Manage ticket status options (Pending, InProgress, Hold, Completed, Rejected).'
+              )}
+              {/* Other */}
+              {currentView === 'role-management' && renderRoleManagement()}
+            </div>
+          )}
+    </AdminDropDownTemplate>
+  );
+};
+
+export default Admin;
+

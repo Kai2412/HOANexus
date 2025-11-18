@@ -7,20 +7,21 @@ import InformationContainer from './components/InformationContainer'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoadingOverlay from './components/LoadingOverlay'
 import Login from './components/Login'
+import ChangePasswordModal from './components/Modal/ChangePasswordModal'
 
 function AppContent() {
   const { communities, selectedCommunity, selectCommunity, loading, error } = useCommunity()
   const { isLoading, message, subMessage } = useLoading()
-  const { isAuthenticated, isLoading: authLoading, logout } = useAuth()
+  const { isAuthenticated, isLoading: authLoading, logout, mustChangePassword, changePassword } = useAuth()
   const [isCommunitySelectorExpanded, setIsCommunitySelectorExpanded] = useState(false)
-  const [currentOverlay, setCurrentOverlay] = useState<'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | null>(null)
+  const [currentOverlay, setCurrentOverlay] = useState<'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | null>(null)
   const [overlayParams, setOverlayParams] = useState<Record<string, any>>({})
   
   const toggleCommunitySelector = () => {
     setIsCommunitySelectorExpanded(!isCommunitySelectorExpanded)
   }
 
-  const handleOverlayNavigation = (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings', params: Record<string, any> = {}) => {
+  const handleOverlayNavigation = (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin', params: Record<string, any> = {}) => {
     setCurrentOverlay(overlay)
     setOverlayParams(params)
     
@@ -101,6 +102,28 @@ function AppContent() {
   // Show login screen if not authenticated
   if (!isAuthenticated) {
     return <Login />;
+  }
+
+  // Show password change modal if required (even if there are other errors)
+  // This should appear BEFORE any other content
+  if (mustChangePassword) {
+    return (
+      <>
+        <div className="h-screen flex flex-col justify-center items-center bg-surface theme-transition">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-royal-600 mb-4"></div>
+          <div className="text-xl text-primary">Please change your password...</div>
+        </div>
+        <ChangePasswordModal
+          isOpen={true}
+          onClose={() => {}} // Cannot close if required
+          onSuccess={() => {
+            // Password changed successfully, modal will close automatically
+            // App will re-render and continue loading
+          }}
+          isRequired={true}
+        />
+      </>
+    );
   }
 
   if (loading || authLoading) {
@@ -189,7 +212,7 @@ function AppContent() {
 
         {/* Bottom Right - Information Container */}
         <div 
-          className="bg-surface theme-transition"
+          className="bg-surface theme-transition h-full overflow-hidden"
           style={{ gridArea: 'information' }}
         >
           <InformationContainer 
@@ -207,6 +230,16 @@ function AppContent() {
         message={message} 
         subMessage={subMessage} 
       />
+
+      {/* Password Change Modal - Optional (for non-required changes) */}
+      {!mustChangePassword && (
+        <ChangePasswordModal
+          isOpen={false} // Controlled by user action (e.g., settings menu)
+          onClose={() => {}}
+          onSuccess={() => {}}
+          isRequired={false}
+        />
+      )}
     </div>
   )
 }

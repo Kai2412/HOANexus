@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   UserPlusIcon, 
   XMarkIcon,
@@ -6,16 +6,10 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import type { CreateStakeholderRequest } from '../../../types/stakeholder';
-import { 
-  STAKEHOLDER_TYPES, 
-  STAKEHOLDER_SUBTYPES,
-  ACCESS_LEVELS,
-  CONTACT_METHODS, 
-  STAKEHOLDER_STATUSES 
-} from '../../../types/stakeholder';
 import { stakeholderService } from '../../../services/stakeholderService';
 import dataService from '../../../services/dataService';
 import type { Community } from '../../../types/community';
+import type { DynamicDropChoice } from '../../../types/reference';
 
 interface AddStakeholderProps {
   onSuccess?: (stakeholder: any) => void;
@@ -24,7 +18,7 @@ interface AddStakeholderProps {
 
 const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) => {
   const [formData, setFormData] = useState<CreateStakeholderRequest>({
-    Type: 'Resident',
+    Type: '',
     SubType: '',
     AccessLevel: '',
     CommunityID: undefined,
@@ -34,8 +28,8 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
     Email: '',
     Phone: '',
     MobilePhone: '',
-    PreferredContactMethod: 'Email',
-    Status: 'Active',
+    PreferredContactMethod: '',
+    Status: '',
     PortalAccessEnabled: false,
     Notes: ''
   });
@@ -47,6 +41,14 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
   const [communitiesLoading, setCommunitiesLoading] = useState(false);
   const [communitySearchTerm, setCommunitySearchTerm] = useState('');
   const [showCommunityDropdown, setShowCommunityDropdown] = useState(false);
+  
+  // Dynamic dropdown options
+  const [stakeholderTypes, setStakeholderTypes] = useState<DynamicDropChoice[]>([]);
+  const [stakeholderSubTypes, setStakeholderSubTypes] = useState<Record<string, DynamicDropChoice[]>>({});
+  const [accessLevels, setAccessLevels] = useState<DynamicDropChoice[]>([]);
+  const [preferredContactMethods, setPreferredContactMethods] = useState<DynamicDropChoice[]>([]);
+  const [statuses, setStatuses] = useState<DynamicDropChoice[]>([]);
+  const [dropdownsLoading, setDropdownsLoading] = useState(false);
 
   const handleInputChange = (field: keyof CreateStakeholderRequest, value: string | boolean | number) => {
     setFormData(prev => ({
@@ -75,15 +77,76 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
     return type === 'Resident';
   };
 
-  // Get available SubTypes based on selected Type
-  const getAvailableSubTypes = () => {
-    return STAKEHOLDER_SUBTYPES[formData.Type as keyof typeof STAKEHOLDER_SUBTYPES] || [];
+  // Load all dropdown options from database
+  const loadDropdowns = async () => {
+    setDropdownsLoading(true);
+    try {
+      // Load all stakeholder-related dropdowns
+      const groupIds = [
+        'stakeholder-types',
+        'stakeholder-subtypes-resident',
+        'stakeholder-subtypes-staff',
+        'stakeholder-subtypes-vendor',
+        'stakeholder-subtypes-other',
+        'access-levels',
+        'preferred-contact-methods',
+        'status'
+      ];
+      
+      const response = await dataService.getDynamicDropChoices(groupIds);
+      
+      // Set stakeholder types
+      const types = response['stakeholder-types'] || [];
+      setStakeholderTypes(types);
+      
+      // Set subtypes grouped by type
+      const subTypes: Record<string, DynamicDropChoice[]> = {};
+      types.forEach((type) => {
+        const typeName = type.ChoiceValue.toLowerCase();
+        const groupKey = `stakeholder-subtypes-${typeName}`;
+        subTypes[type.ChoiceID] = response[groupKey] || [];
+      });
+      setStakeholderSubTypes(subTypes);
+      
+      // Set access levels
+      setAccessLevels(response['access-levels'] || []);
+      
+      // Set preferred contact methods
+      setPreferredContactMethods(response['preferred-contact-methods'] || []);
+      
+      // Set statuses
+      setStatuses(response['status'] || []);
+      
+      // Set default values from database defaults
+      const defaultType = types.find(t => t.IsDefault);
+      const defaultAccessLevel = (response['access-levels'] || []).find(a => a.IsDefault);
+      const defaultContactMethod = (response['preferred-contact-methods'] || []).find(m => m.IsDefault);
+      const defaultStatus = (response['status'] || []).find(s => s.IsDefault);
+      
+      if (defaultType || defaultAccessLevel || defaultContactMethod || defaultStatus) {
+        setFormData(prev => ({
+          ...prev,
+          Type: defaultType?.ChoiceValue || prev.Type,
+          AccessLevel: defaultAccessLevel?.ChoiceValue || prev.AccessLevel,
+          PreferredContactMethod: defaultContactMethod?.ChoiceValue || prev.PreferredContactMethod,
+          Status: defaultStatus?.ChoiceValue || prev.Status
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading dropdowns:', error);
+    } finally {
+      setDropdownsLoading(false);
+    }
   };
 
-  // Check if Access Level should be shown (only for Company Employees)
-  const shouldShowAccessLevel = () => {
-    return formData.Type === 'Company Employee';
+  // Get available SubTypes based on selected Type
+  const getAvailableSubTypes = () => {
+    const selectedType = stakeholderTypes.find(t => t.ChoiceValue === formData.Type);
+    if (!selectedType) return [];
+    return stakeholderSubTypes[selectedType.ChoiceID] || [];
   };
+
+  // Access Level is now shown for all stakeholder types
 
   // Check if Community selector should be shown (only for Residents)
   const shouldShowCommunitySelector = () => {
@@ -95,9 +158,10 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
     return formData.Type === 'Vendor';
   };
 
-  // Load communities when component mounts
-  React.useEffect(() => {
+  // Load communities and dropdowns when component mounts
+  useEffect(() => {
     loadCommunities();
+    loadDropdowns();
   }, []);
 
   const loadCommunities = async () => {
@@ -217,10 +281,14 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
         }
         // Reset form after successful creation
         setTimeout(() => {
+          const defaultType = stakeholderTypes.find(t => t.IsDefault);
+          const defaultAccessLevel = accessLevels.find(a => a.IsDefault);
+          const defaultContactMethod = preferredContactMethods.find(m => m.IsDefault);
+          const defaultStatus = statuses.find(s => s.IsDefault);
           setFormData({
-            Type: 'Resident',
+            Type: defaultType?.ChoiceValue || '',
             SubType: '',
-            AccessLevel: '',
+            AccessLevel: defaultAccessLevel?.ChoiceValue || '',
             CommunityID: undefined,
             FirstName: '',
             LastName: '',
@@ -228,8 +296,8 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
             Email: '',
             Phone: '',
             MobilePhone: '',
-            PreferredContactMethod: 'Email',
-            Status: 'Active',
+            PreferredContactMethod: defaultContactMethod?.ChoiceValue || '',
+            Status: defaultStatus?.ChoiceValue || '',
             PortalAccessEnabled: false,
             Notes: ''
           });
@@ -251,10 +319,14 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
       onCancel();
     } else {
       // Reset form
+      const defaultType = stakeholderTypes.find(t => t.IsDefault);
+      const defaultAccessLevel = accessLevels.find(a => a.IsDefault);
+      const defaultContactMethod = preferredContactMethods.find(m => m.IsDefault);
+      const defaultStatus = statuses.find(s => s.IsDefault);
       setFormData({
-        Type: 'Resident',
+        Type: defaultType?.ChoiceValue || '',
         SubType: '',
-        AccessLevel: '',
+        AccessLevel: defaultAccessLevel?.ChoiceValue || '',
         CommunityID: undefined,
         FirstName: '',
         LastName: '',
@@ -262,8 +334,8 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
         Email: '',
         Phone: '',
         MobilePhone: '',
-        PreferredContactMethod: 'Email',
-        Status: 'Active',
+        PreferredContactMethod: defaultContactMethod?.ChoiceValue || '',
+        Status: defaultStatus?.ChoiceValue || '',
         PortalAccessEnabled: false,
         Notes: ''
       });
@@ -355,10 +427,18 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
                 onChange={(e) => handleTypeChange(e.target.value)}
                 className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
                 required
+                disabled={dropdownsLoading}
               >
-                {STAKEHOLDER_TYPES.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
+                {dropdownsLoading ? (
+                  <option>Loading types...</option>
+                ) : (
+                  <>
+                    <option value="" disabled>Select Type</option>
+                    {stakeholderTypes.map(type => (
+                      <option key={type.ChoiceID} value={type.ChoiceValue}>{type.ChoiceValue}</option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
             <div>
@@ -369,30 +449,30 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
                 value={formData.SubType || ''}
                 onChange={(e) => handleInputChange('SubType', e.target.value)}
                 className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
+                disabled={!formData.Type || dropdownsLoading}
               >
-                <option value="">Select Sub Type</option>
+                <option value="" disabled>Select Sub Type</option>
                 {getAvailableSubTypes().map(subType => (
-                  <option key={subType} value={subType}>{subType}</option>
+                  <option key={subType.ChoiceID} value={subType.ChoiceValue}>{subType.ChoiceValue}</option>
                 ))}
               </select>
             </div>
-            {shouldShowAccessLevel() && (
-              <div>
-                <label className="block text-sm font-medium text-primary mb-2">
-                  Access Level
-                </label>
-                <select
-                  value={formData.AccessLevel || ''}
-                  onChange={(e) => handleInputChange('AccessLevel', e.target.value)}
-                  className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
-                >
-                  <option value="">Select Access Level</option>
-                  {ACCESS_LEVELS.map(level => (
-                    <option key={level} value={level}>{level}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-primary mb-2">
+                Access Level
+              </label>
+              <select
+                value={formData.AccessLevel || ''}
+                onChange={(e) => handleInputChange('AccessLevel', e.target.value)}
+                className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
+                disabled={dropdownsLoading}
+              >
+                <option value="" disabled>Select Access Level</option>
+                {accessLevels.map(level => (
+                  <option key={level.ChoiceID} value={level.ChoiceValue}>{level.ChoiceValue}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Community Selector Row */}
@@ -521,10 +601,18 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
                 value={formData.PreferredContactMethod}
                 onChange={(e) => handleInputChange('PreferredContactMethod', e.target.value)}
                 className="w-full md:w-1/3 px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
+                disabled={dropdownsLoading}
               >
-                {CONTACT_METHODS.map(method => (
-                  <option key={method} value={method}>{method}</option>
-                ))}
+                {dropdownsLoading ? (
+                  <option>Loading...</option>
+                ) : (
+                  <>
+                    <option value="" disabled>Select Method</option>
+                    {preferredContactMethods.map(method => (
+                      <option key={method.ChoiceID} value={method.ChoiceValue}>{method.ChoiceValue}</option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
           </div>
@@ -542,10 +630,18 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
                     value={formData.Status}
                     onChange={(e) => handleInputChange('Status', e.target.value)}
                     className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
+                    disabled={dropdownsLoading}
                   >
-                    {STAKEHOLDER_STATUSES.map(status => (
-                      <option key={status} value={status}>{status}</option>
-                    ))}
+                    {dropdownsLoading ? (
+                      <option>Loading...</option>
+                    ) : (
+                      <>
+                        <option value="" disabled>Select Status</option>
+                        {statuses.map(status => (
+                          <option key={status.ChoiceID} value={status.ChoiceValue}>{status.ChoiceValue}</option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>
@@ -557,6 +653,7 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
                     onChange={(e) => handleInputChange('PortalAccessEnabled', e.target.value === 'Yes')}
                     className="w-full px-3 py-2 border border-primary rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-500 focus:border-transparent theme-transition"
                   >
+                    <option value="" disabled>Select Option</option>
                     <option value="No">No</option>
                     <option value="Yes">Yes</option>
                   </select>

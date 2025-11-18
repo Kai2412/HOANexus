@@ -28,7 +28,7 @@ interface DirectoryLookupProps {
   error: string | null;
   onEditStakeholder?: (stakeholder: Stakeholder) => void;
   onViewStakeholder?: (stakeholder: Stakeholder) => void;
-  onDeleteStakeholder?: (id: number) => void;
+  onDeleteStakeholder?: (id: string) => void;
   totalStakeholders?: number;
   currentPage?: number;
   totalPages?: number;
@@ -54,9 +54,9 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
   endIndex = 0,
   onPageChange
 }) => {
-  const [expandedStakeholder, setExpandedStakeholder] = useState<number | null>(null);
+  const [expandedStakeholder, setExpandedStakeholder] = useState<string | null>(null);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-  const [stakeholderToDelete, setStakeholderToDelete] = useState<number | null>(null);
+  const [stakeholderToDelete, setStakeholderToDelete] = useState<string | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedStakeholder, setSelectedStakeholder] = useState<Stakeholder | null>(null);
@@ -108,7 +108,7 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
     }
     
     // Update selectedStakeholder if it's the same stakeholder being edited
-    if (selectedStakeholder && selectedStakeholder.ID === updatedStakeholder.ID) {
+    if (selectedStakeholder && selectedStakeholder.StakeholderID === updatedStakeholder.StakeholderID) {
       setSelectedStakeholder(updatedStakeholder);
     }
     
@@ -121,7 +121,7 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
     setSelectedStakeholder(null);
   };
 
-  const toggleExpanded = (id: number) => {
+  const toggleExpanded = (id: string) => {
     setExpandedStakeholder(expandedStakeholder === id ? null : id);
   };
 
@@ -201,7 +201,7 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
           ) : (
             filteredStakeholders.map((stakeholder) => (
               <div
-                key={stakeholder.ID}
+                key={stakeholder.StakeholderID}
                 className="bg-surface border border-primary rounded-lg hover:shadow-md transition-shadow theme-transition"
               >
                 {/* Main Row */}
@@ -209,10 +209,10 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
                       <button
-                        onClick={() => toggleExpanded(stakeholder.ID)}
+                        onClick={() => toggleExpanded(stakeholder.StakeholderID)}
                         className="p-1 hover:bg-surface-secondary rounded transition-colors"
                       >
-                        {expandedStakeholder === stakeholder.ID ? (
+                        {expandedStakeholder === stakeholder.StakeholderID ? (
                           <ChevronDownIcon className="h-5 w-5 text-secondary" />
                         ) : (
                           <ChevronRightIcon className="h-5 w-5 text-secondary" />
@@ -246,11 +246,11 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
                               <EnvelopeIcon className="h-4 w-4" />
                               <span>{stakeholder.Email}</span>
                               <button
-                                onClick={() => copyToClipboard(stakeholder.Email!, `email-${stakeholder.ID}`)}
+                                onClick={() => copyToClipboard(stakeholder.Email!, `email-${stakeholder.StakeholderID}`)}
                                 className="p-1 text-secondary hover:text-royal-600 dark:hover:text-royal-400 hover:bg-surface-secondary rounded transition-colors"
                                 title="Copy email to clipboard"
                               >
-                                {copiedField === `email-${stakeholder.ID}` ? (
+                                {copiedField === `email-${stakeholder.StakeholderID}` ? (
                                   <CheckIcon className="h-3 w-3 text-green-600 dark:text-green-400" />
                                 ) : (
                                   <ClipboardDocumentIcon className="h-3 w-3" />
@@ -263,11 +263,11 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
                               <PhoneIcon className="h-4 w-4" />
                               <span>{stakeholder.Phone}</span>
                               <button
-                                onClick={() => copyToClipboard(stakeholder.Phone!, `phone-${stakeholder.ID}`)}
+                                onClick={() => copyToClipboard(stakeholder.Phone!, `phone-${stakeholder.StakeholderID}`)}
                                 className="p-1 text-secondary hover:text-royal-600 dark:hover:text-royal-400 hover:bg-surface-secondary rounded transition-colors"
                                 title="Copy phone to clipboard"
                               >
-                                {copiedField === `phone-${stakeholder.ID}` ? (
+                                {copiedField === `phone-${stakeholder.StakeholderID}` ? (
                                   <CheckIcon className="h-3 w-3 text-green-600 dark:text-green-400" />
                                 ) : (
                                   <ClipboardDocumentIcon className="h-3 w-3" />
@@ -296,7 +296,7 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
                         <PencilIcon className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => handleDeleteClick(stakeholder.ID)}
+                        onClick={() => handleDeleteClick(stakeholder.StakeholderID)}
                         className="p-2 text-secondary hover:text-red-600 dark:hover:text-red-400 hover:bg-surface-secondary rounded transition-colors"
                         title="Delete Stakeholder"
                       >
@@ -307,7 +307,7 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
                 </div>
 
                 {/* Expanded Details */}
-                {expandedStakeholder === stakeholder.ID && (
+                {expandedStakeholder === stakeholder.StakeholderID && (
                   <div className="border-t border-primary px-4 py-3 bg-surface-secondary">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                       <div>
@@ -325,11 +325,11 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
                           </p>
                           {stakeholder.MobilePhone && (
                             <button
-                              onClick={() => copyToClipboard(stakeholder.MobilePhone!, `mobile-${stakeholder.ID}`)}
+                              onClick={() => copyToClipboard(stakeholder.MobilePhone!, `mobile-${stakeholder.StakeholderID}`)}
                               className="p-1 text-secondary hover:text-royal-600 dark:hover:text-royal-400 hover:bg-surface-secondary rounded transition-colors"
                               title="Copy mobile phone to clipboard"
                             >
-                              {copiedField === `mobile-${stakeholder.ID}` ? (
+                              {copiedField === `mobile-${stakeholder.StakeholderID}` ? (
                                 <CheckIcon className="h-3 w-3 text-green-600 dark:text-green-400" />
                               ) : (
                                 <ClipboardDocumentIcon className="h-3 w-3" />

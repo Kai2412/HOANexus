@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateToken } = require('../middleware/auth');
 const {
   getAllStakeholders,
   getStakeholderById,
@@ -26,13 +27,13 @@ router.get('/:id', getStakeholderById);
 // GET /api/stakeholders/5/properties - Get stakeholder with properties
 router.get('/:id/properties', getStakeholderWithProperties);
 
-// POST /api/stakeholders - Create new stakeholder
-router.post('/', createStakeholder);
+// POST /api/stakeholders - Create new stakeholder (requires auth)
+router.post('/', authenticateToken, createStakeholder);
 
-// PUT /api/stakeholders/5 - Update stakeholder with ID 5
-router.put('/:id', updateStakeholder);
+// PUT /api/stakeholders/5 - Update stakeholder with ID 5 (requires auth)
+router.put('/:id', authenticateToken, updateStakeholder);
 
-// DELETE /api/stakeholders/5 - Delete stakeholder with ID 5
-router.delete('/:id', deleteStakeholder);
+// DELETE /api/stakeholders/5 - Delete stakeholder with ID 5 (requires auth)
+router.delete('/:id', authenticateToken, deleteStakeholder);
 
 module.exports = router;

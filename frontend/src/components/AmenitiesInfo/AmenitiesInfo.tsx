@@ -8,7 +8,7 @@ import {
   ClockIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import amenityService from '../../services/amenityService';
+// import amenityService from '../../services/amenityService'; // Temporarily disabled - using placeholder data
 import AmenityDetailsModal from './AmenityDetailsModal';
 import type { Community, Amenity } from '../../types';
 
@@ -162,12 +162,173 @@ const AmenitiesInfo: React.FC<AmenitiesInfoProps> = ({ community }) => {
     }
   }, [community?.id]);
 
+  // Placeholder data - will be replaced when new amenity table is ready
+  const getPlaceholderAmenities = (): Amenity[] => {
+    return [
+      {
+        AmenityID: 1,
+        Name: 'Main Pool',
+        AmenityType: 'Pool',
+        Status: 'Available',
+        Description: 'Large outdoor swimming pool with diving board and shallow end for children.',
+        Location: 'Building A, Ground Floor',
+        Capacity: 50,
+        IsReservable: false,
+        RequiresApproval: false,
+        ReservationFee: 0,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 2,
+        Name: 'Community Clubhouse',
+        AmenityType: 'Clubhouse',
+        Status: 'Available',
+        Description: 'Spacious clubhouse perfect for events, parties, and community gatherings. Includes kitchen facilities.',
+        Location: 'Building B, First Floor',
+        Capacity: 100,
+        IsReservable: true,
+        RequiresApproval: true,
+        ReservationFee: 150.00,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 3,
+        Name: 'Fitness Center',
+        AmenityType: 'Gym',
+        Status: 'Available',
+        Description: 'Fully equipped gym with cardio machines, free weights, and yoga space.',
+        Location: 'Building C, Ground Floor',
+        Capacity: 20,
+        IsReservable: false,
+        RequiresApproval: false,
+        ReservationFee: 0,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 4,
+        Name: 'Tennis Court #1',
+        AmenityType: 'Tennis Court',
+        Status: 'Available',
+        Description: 'Professional-grade tennis court with lighting for evening play.',
+        Location: 'Outdoor Recreation Area',
+        Capacity: 4,
+        IsReservable: true,
+        RequiresApproval: false,
+        ReservationFee: 25.00,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 5,
+        Name: 'Basketball Court',
+        AmenityType: 'Basketball Court',
+        Status: 'Available',
+        Description: 'Full-size basketball court with adjustable hoops.',
+        Location: 'Outdoor Recreation Area',
+        Capacity: 10,
+        IsReservable: false,
+        RequiresApproval: false,
+        ReservationFee: 0,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 6,
+        Name: 'Children\'s Playground',
+        AmenityType: 'Playground',
+        Status: 'Available',
+        Description: 'Safe, modern playground equipment for children of all ages.',
+        Location: 'Central Park Area',
+        Capacity: 30,
+        IsReservable: false,
+        RequiresApproval: false,
+        ReservationFee: 0,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 7,
+        Name: 'Dog Park',
+        AmenityType: 'Dog Park',
+        Status: 'Available',
+        Description: 'Fenced dog park with separate areas for large and small dogs.',
+        Location: 'North End of Property',
+        Capacity: 20,
+        IsReservable: false,
+        RequiresApproval: false,
+        ReservationFee: 0,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 8,
+        Name: 'BBQ Area',
+        AmenityType: 'BBQ Area',
+        Status: 'Maintenance',
+        Description: 'Outdoor BBQ area with multiple grills and picnic tables.',
+        Location: 'Pool Deck Area',
+        Capacity: 25,
+        IsReservable: true,
+        RequiresApproval: false,
+        ReservationFee: 50.00,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      },
+      {
+        AmenityID: 9,
+        Name: 'Meeting Room',
+        AmenityType: 'Meeting Room',
+        Status: 'Available',
+        Description: 'Conference room with AV equipment and seating for meetings.',
+        Location: 'Building B, Second Floor',
+        Capacity: 15,
+        IsReservable: true,
+        RequiresApproval: true,
+        ReservationFee: 75.00,
+        CreatedDate: new Date().toISOString(),
+        ModifiedDate: new Date().toISOString(),
+        CommunityName: community.displayName || 'Community',
+        CommunityCode: community.propertyCode || '',
+        CommunityID: 1
+      }
+    ];
+  };
+
   const loadAmenities = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await amenityService.getAmenities(community.id);
-      setAmenities(response.data || []);
+      // Using placeholder data - API will be reconnected when new amenity table is ready
+      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+      const placeholderData = getPlaceholderAmenities();
+      setAmenities(placeholderData);
     } catch (err) {
       setError('Failed to load amenities');
     } finally {

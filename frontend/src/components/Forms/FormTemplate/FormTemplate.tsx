@@ -94,7 +94,7 @@ const FormTemplate: React.FC<FormTemplateProps> = ({
     return (
       <div className="bg-royal-50 dark:bg-royal-900/20 border border-royal-200 dark:border-royal-800 rounded-lg p-4 mb-6">
         <div className="text-center">
-          <span className="text-sm text-secondary">Submitting for Community:</span>
+          <span className="text-sm font-semibold text-secondary">Submitting for Community:</span>
           {selectedCommunity ? (
             <p className="text-lg font-semibold text-royal-600 dark:text-royal-400 mt-1">
               {selectedCommunity.pcode} - {selectedCommunity.displayName || selectedCommunity.name}
@@ -111,8 +111,8 @@ const FormTemplate: React.FC<FormTemplateProps> = ({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="bg-surface-secondary border-b border-primary p-4">
+      {/* Fixed Header/Banner */}
+      <div className="flex-shrink-0 bg-surface-secondary border-b border-primary p-4">
         <div className="space-y-4">
           {/* Breadcrumbs */}
           <div>
@@ -137,8 +137,8 @@ const FormTemplate: React.FC<FormTemplateProps> = ({
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 p-6 overflow-auto">
+      {/* Scrollable Content Area */}
+      <div className="overflow-y-auto px-6 pt-6 pb-9" style={{ height: 'calc(100vh - 250px)' }}>
         <div className="max-w-6xl mx-auto">
           
           {/* Success Message */}
@@ -167,7 +167,7 @@ const FormTemplate: React.FC<FormTemplateProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex justify-end space-x-4">
+            <div className="flex justify-end space-x-4 mb-6">
               {onCancel && (
                 <button
                   type="button"

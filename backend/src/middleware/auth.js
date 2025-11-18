@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { logger } = require('../utils/logger');
+const { setDatabaseName } = require('../utils/databaseContext');
 
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -32,9 +33,18 @@ const authenticateToken = (req, res, next) => {
 
     // Add user info to request object
     req.user = decoded;
+    
+    // Set database name for this request (from JWT token)
+    // This will be used by models to connect to the correct client database
+    if (decoded.databaseName) {
+      req.databaseName = decoded.databaseName;
+      setDatabaseName(decoded.databaseName); // Set in context for models to use
+    }
+    
     logger.debug('Token verified successfully', 'AuthMiddleware', { 
       userId: decoded.userId,
-      stakeholderId: decoded.stakeholderId 
+      stakeholderId: decoded.stakeholderId,
+      databaseName: decoded.databaseName
     });
     
     next();

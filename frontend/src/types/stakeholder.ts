@@ -1,11 +1,13 @@
 // Stakeholder types based on cor_Stakeholders database schema
 
 export interface Stakeholder {
-  ID: number;
+  StakeholderID: string; // GUID
   Type: string;
   SubType: string | null;
   AccessLevel: string | null;
-  CommunityID: number | null;
+  Department: string | null;
+  Title: string | null;
+  CommunityID: string | null; // GUID
   FirstName: string | null;
   LastName: string | null;
   CompanyName: string | null;
@@ -16,8 +18,11 @@ export interface Stakeholder {
   Status: string | null;
   PortalAccessEnabled: boolean | null;
   LastLoginDate: string | null; // ISO date string
-  CreatedDate: string | null; // ISO date string
   Notes: string | null;
+  CreatedOn: string | null; // ISO date string
+  CreatedBy: string | null; // GUID
+  ModifiedOn: string | null; // ISO date string
+  ModifiedBy: string | null; // GUID
   IsActive: boolean | null;
 }
 
@@ -25,7 +30,9 @@ export interface CreateStakeholderRequest {
   Type: string;
   SubType?: string;
   AccessLevel?: string;
-  CommunityID?: number;
+  Department?: string;
+  Title?: string;
+  CommunityID?: string; // GUID
   FirstName: string;
   LastName: string;
   CompanyName?: string;
@@ -42,7 +49,9 @@ export interface UpdateStakeholderRequest {
   Type?: string;
   SubType?: string;
   AccessLevel?: string;
-  CommunityID?: number;
+  Department?: string;
+  Title?: string;
+  CommunityID?: string; // GUID
   FirstName?: string;
   LastName?: string;
   CompanyName?: string;

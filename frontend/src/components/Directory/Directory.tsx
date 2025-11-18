@@ -112,12 +112,12 @@ const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakehold
   };
 
 
-  const handleDeleteStakeholder = async (id: number) => {
+  const handleDeleteStakeholder = async (id: string) => {
     try {
       const response = await stakeholderService.deleteStakeholder(id);
       if (response.success) {
         // Remove from local state
-        setStakeholders(prev => prev.filter(s => s.ID !== id));
+        setStakeholders(prev => prev.filter(s => s.StakeholderID !== id));
       } else {
         setError(response.message || 'Failed to delete stakeholder');
       }
@@ -130,7 +130,7 @@ const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakehold
   const handleEditStakeholder = (updatedStakeholder: Stakeholder) => {
     // Update the stakeholder in the local state and re-sort
     setStakeholders(prev => {
-      const updatedList = prev.map(s => s.ID === updatedStakeholder.ID ? updatedStakeholder : s);
+      const updatedList = prev.map(s => s.StakeholderID === updatedStakeholder.StakeholderID ? updatedStakeholder : s);
       
       // Re-sort the list to maintain alphabetical order
       return updatedList.sort((a, b) => {
