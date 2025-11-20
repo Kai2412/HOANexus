@@ -7,10 +7,13 @@ import {
   PencilIcon,
   ArrowUpIcon,
   ArrowDownIcon,
+  ArrowUpTrayIcon,
   CheckCircleIcon,
-  XCircleIcon
+  XCircleIcon,
+  BuildingOfficeIcon
 } from '@heroicons/react/24/outline';
 import AdminDropDownTemplate from './AdminDropDownTemplate/AdminDropDownTemplate';
+import BulkUpload from './BulkUpload';
 import dataService from '../../services/dataService';
 
 interface AdminProps {
@@ -29,8 +32,9 @@ type DropdownCategory =
   | 'preferred-contact-methods'
   | 'status'
   | 'ticket-statuses';
-type AdminCategory = 'dynamic-drop-choices' | 'other';
-type AdminView = 'categories' | AdminCategory | DropdownCategory;
+type BulkUploadType = 'communities-upload' | 'stakeholders-upload';
+type AdminCategory = 'dynamic-drop-choices' | 'bulk-uploads' | 'other';
+type AdminView = 'categories' | AdminCategory | DropdownCategory | BulkUploadType;
 
 interface DropdownChoice {
   ChoiceID: string;
@@ -124,6 +128,12 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       name: 'Dynamic Drop Choices', 
       icon: CogIcon,
       description: 'Manage all dropdown options and choices used throughout the system'
+    },
+    {
+      id: 'bulk-uploads' as AdminCategory,
+      name: 'Bulk Uploads',
+      icon: ArrowUpTrayIcon,
+      description: 'Import multiple communities or stakeholders using CSV files'
     }
     // Future: Add other admin sections here
     // { id: 'permissions' as AdminCategory, name: 'Permissions', icon: CogIcon, description: '...' }
@@ -190,7 +200,23 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         onClick: () => setCurrentView('dynamic-drop-choices'),
         isActive: true
       });
-    } else if (currentView !== 'categories' && (currentView as string) !== 'dynamic-drop-choices') {
+    } else if (currentView === 'bulk-uploads') {
+      base.push({ 
+        label: 'Bulk Uploads',
+        onClick: () => setCurrentView('bulk-uploads'),
+        isActive: true
+      });
+    } else if (currentView === 'communities-upload' || currentView === 'stakeholders-upload') {
+      base.push({ 
+        label: 'Bulk Uploads',
+        onClick: () => setCurrentView('bulk-uploads')
+      });
+      if (currentView === 'communities-upload') {
+        base.push({ label: 'Communities', isActive: true });
+      } else if (currentView === 'stakeholders-upload') {
+        base.push({ label: 'Stakeholders', isActive: true });
+      }
+    } else if (currentView !== 'categories' && (currentView as string) !== 'dynamic-drop-choices' && (currentView as string) !== 'bulk-uploads') {
       // We're in a dropdown category
       base.push({ 
         label: 'Dynamic Drop Choices',
@@ -685,17 +711,13 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     
     return (
       <div className="space-y-4">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-primary mb-2">{title}</h2>
-          <p className="text-sm text-secondary">{description}</p>
-          {!allowAddNew && (
-            <div className="mt-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                <strong>Note:</strong> New choices cannot be created for this group as it is system-managed and required for core functionality. These options are displayed for reference and explanation purposes.
-              </p>
-            </div>
-          )}
-        </div>
+        {!allowAddNew && (
+          <div className="mb-6 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              <strong>Note:</strong> New choices cannot be created for this group as it is system-managed and required for core functionality. These options are displayed for reference and explanation purposes.
+            </p>
+          </div>
+        )}
 
         {loading ? (
           <div className="text-center py-12">
@@ -914,13 +936,6 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
   const renderStakeholderTypesManagement = () => {
     return (
       <div className="space-y-4">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-primary mb-2">Stakeholder Types Management</h2>
-          <p className="text-sm text-secondary">
-            Manage stakeholder types and their subtypes. Types (Resident, Staff, Vendor, Other) are system-managed and immutable. SubTypes are fully editable.
-          </p>
-        </div>
-
         {loading ? (
           <div className="text-center py-12">
             <p className="text-secondary">Loading...</p>
@@ -1114,13 +1129,6 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
   const renderRoleManagement = () => {
     return (
       <div className="space-y-4">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-primary mb-2">Role Hierarchy Management</h2>
-          <p className="text-sm text-secondary">
-            Manage role types and titles for community assignments. Hierarchy levels (0-3) are hard-locked for permission control.
-          </p>
-        </div>
-
         {roleHierarchy.map((role) => (
           <div key={role.level} className="bg-surface-secondary border border-primary rounded-lg overflow-hidden">
             {/* Level Header */}
@@ -1212,21 +1220,84 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     );
   };
 
+  const getTitle = () => {
+    if (currentView === 'communities-upload') return 'Bulk Upload Communities';
+    if (currentView === 'stakeholders-upload') return 'Bulk Upload Stakeholders';
+    if (currentView === 'bulk-uploads') return 'Bulk Uploads';
+    if (currentView === 'dynamic-drop-choices') return 'Dynamic Drop Choices';
+    if (currentView === 'categories') return 'Admin Portal';
+    
+    // Check if it's a dropdown category
+    const dropdownCategories: DropdownCategory[] = [
+      'client-type', 'service-type', 'management-type', 'development-stage',
+      'acquisition-type', 'stakeholder-types', 'access-levels',
+      'preferred-contact-methods', 'status', 'ticket-statuses', 'role-management'
+    ];
+    
+    if (dropdownCategories.includes(currentView as DropdownCategory)) {
+      const categoryNames: Record<DropdownCategory, string> = {
+        'client-type': 'Client Type Management',
+        'service-type': 'Service Type Management',
+        'management-type': 'Management Type Management',
+        'development-stage': 'Development Stage Management',
+        'acquisition-type': 'Acquisition Type Management',
+        'stakeholder-types': 'Stakeholder Types Management',
+        'access-levels': 'Access Levels Management',
+        'preferred-contact-methods': 'Preferred Contact Methods Management',
+        'status': 'Status Management',
+        'ticket-statuses': 'Ticket Statuses Management',
+        'role-management': 'Role Management'
+      };
+      return categoryNames[currentView as DropdownCategory] || 'Admin Portal';
+    }
+    
+    return 'Admin Portal';
+  };
+
+  const getDescription = () => {
+    if (currentView === 'communities-upload') return 'Upload multiple communities at once using a CSV file';
+    if (currentView === 'stakeholders-upload') return 'Upload multiple stakeholders at once using a CSV file';
+    if (currentView === 'bulk-uploads') return 'Import multiple records at once using CSV files';
+    if (currentView === 'dynamic-drop-choices') return 'Manage dropdown options and choices used throughout the system';
+    if (currentView === 'categories') return 'Manage system configurations and admin tools';
+    
+    // Check if it's a dropdown category
+    const dropdownCategories: DropdownCategory[] = [
+      'client-type', 'service-type', 'management-type', 'development-stage',
+      'acquisition-type', 'stakeholder-types', 'access-levels',
+      'preferred-contact-methods', 'status', 'ticket-statuses', 'role-management'
+    ];
+    
+    if (dropdownCategories.includes(currentView as DropdownCategory)) {
+      const descriptions: Record<DropdownCategory, string> = {
+        'client-type': 'Manage client type options for communities. The order you see here is the order they will appear in dropdowns.',
+        'service-type': 'Manage service type options for communities (Full Service, Hybrid, Accounting Only, Compliance Only).',
+        'management-type': 'Manage management type options for communities (Portfolio, Onsite, Hybrid).',
+        'development-stage': 'Manage development stage options for communities (Homeowner Controlled, Declarant Controlled).',
+        'acquisition-type': 'Manage acquisition type options for communities (Organic, Acquisition).',
+        'stakeholder-types': 'Configure stakeholder types and subtypes',
+        'access-levels': 'Manage access levels (None, View, View+Write, View+Write+Delete). System-managed levels cannot be edited or deleted as they are required for permission control.',
+        'preferred-contact-methods': 'Manage preferred contact method options (Email, Phone, Mobile, Text, Mail).',
+        'status': 'Manage status options (Active, Inactive, Pending, Suspended).',
+        'ticket-statuses': 'Manage ticket status options (Pending, InProgress, Hold, Completed, Rejected).',
+        'role-management': 'Manage role hierarchy and titles for community assignments'
+      };
+      return descriptions[currentView as DropdownCategory] || 'Manage system configuration and dropdown options';
+    }
+    
+    return 'Manage system configurations and admin tools';
+  };
+
   return (
     <AdminDropDownTemplate
-      title="Admin Portal"
-      description="Manage system configuration and dropdown options"
+      title={getTitle()}
+      description={getDescription()}
       onClose={onClose}
       breadcrumbs={getBreadcrumbs()}
     >
           {/* Main Categories View */}
           {currentView === 'categories' && (
             <div>
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-primary mb-2">Admin Categories</h2>
-                <p className="text-sm text-secondary">Select a category to manage system configuration options</p>
-              </div>
-
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {mainCategories.map((category) => {
                   const Icon = category.icon;
@@ -1253,11 +1324,6 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
           {/* Dynamic Drop Choices - Subcategories */}
           {currentView === 'dynamic-drop-choices' && (
             <div>
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-primary mb-2">Dynamic Drop Choices</h2>
-                <p className="text-sm text-secondary">Manage dropdown options and choices used throughout the system</p>
-              </div>
-
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {dropdownCategories.map((category) => {
                   return (
@@ -1280,8 +1346,46 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
             </div>
           )}
 
+          {/* Bulk Uploads - Subcategories */}
+          {currentView === 'bulk-uploads' && (
+            <div>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <button
+                  onClick={() => setCurrentView('communities-upload')}
+                  className="bg-surface-secondary rounded-lg border border-primary p-6 hover:shadow-lg transition-all hover:-translate-y-1 text-left theme-transition"
+                >
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="p-2 bg-royal-100 dark:bg-royal-900/30 rounded-lg">
+                      <BuildingOfficeIcon className="w-6 h-6 text-royal-600 dark:text-royal-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-primary">Communities</h3>
+                  </div>
+                  <p className="text-sm text-secondary">Import multiple communities using a CSV file</p>
+                </button>
+                {/* Future: Stakeholders upload */}
+                <button
+                  disabled
+                  className="bg-surface-secondary rounded-lg border border-primary p-6 opacity-50 cursor-not-allowed text-left theme-transition"
+                >
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="p-2 bg-royal-100 dark:bg-royal-900/30 rounded-lg">
+                      <ArrowUpTrayIcon className="w-6 h-6 text-royal-600 dark:text-royal-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-primary">Stakeholders (Coming Soon)</h3>
+                  </div>
+                  <p className="text-sm text-secondary">Import multiple stakeholders using a CSV file</p>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Upload Type Views */}
+          {currentView === 'communities-upload' && (
+            <BulkUpload onBack={() => setCurrentView('bulk-uploads')} />
+          )}
+
           {/* Dropdown Category Content Views */}
-          {currentView !== 'categories' && currentView !== 'dynamic-drop-choices' && (
+          {currentView !== 'categories' && currentView !== 'dynamic-drop-choices' && currentView !== 'bulk-uploads' && currentView !== 'communities-upload' && currentView !== 'stakeholders-upload' && (
             <div>
               {/* Community Dropdowns */}
               {currentView === 'client-type' && renderDropdownManagement(

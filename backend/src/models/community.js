@@ -1,4 +1,5 @@
 const { sql, getConnection } = require('../config/database');
+const { logger } = require('../utils/logger');
 
 // Base community fields (no dropdowns)
 const COMMUNITY_BASE_SELECT = `
@@ -108,7 +109,7 @@ class Community {
       return result.recordset;
     } catch (error) {
       // Enhanced error logging
-      console.error('Community.getAll() error:', {
+      logger.error('Community.getAll() error:', {
         message: error.message,
         code: error.code,
         number: error.number,
@@ -407,7 +408,16 @@ class Community {
           setClauses.push(`${key} = @${key}`);
         }
       } else if (key === 'Active') {
-        request.input(key, config.type, value);
+        // Ensure Active is a boolean (handle string "true"/"false", "1"/"0", etc.)
+        let activeValue = value;
+        if (typeof value === 'string') {
+          activeValue = value === 'true' || value === '1';
+        } else if (value === 1 || value === '1') {
+          activeValue = true;
+        } else if (value === 0 || value === '0' || value === false || value === 'false') {
+          activeValue = false;
+        }
+        request.input(key, config.type, activeValue);
         setClauses.push(`${key} = @${key}`);
       } else if (key === 'ContractStart' || key === 'ContractEnd') {
         if (value === '' || value === null || value === undefined) {
@@ -433,11 +443,29 @@ class Community {
 
     setClauses.push('ModifiedOn = SYSUTCDATETIME()');
 
-    await request.query(`
-      UPDATE dbo.cor_Communities
-      SET ${setClauses.join(', ')}
-      WHERE CommunityID = @communityId
-    `);
+    try {
+      await request.query(`
+        UPDATE dbo.cor_Communities
+        SET ${setClauses.join(', ')}
+        WHERE CommunityID = @communityId
+      `);
+    } catch (sqlError) {
+      // Enhanced error logging for SQL errors
+      logger.error('SQL Error in Community.update:', {
+        message: sqlError.message,
+        code: sqlError.code,
+        number: sqlError.number,
+        state: sqlError.state,
+        setClauses: setClauses,
+        payload: payload
+      });
+      const errorMessage = sqlError.message || 'Database error occurred';
+      const enhancedError = new Error(`Failed to update community: ${errorMessage}`);
+      enhancedError.code = sqlError.code;
+      enhancedError.number = sqlError.number;
+      enhancedError.state = sqlError.state;
+      throw enhancedError;
+    }
 
     return this.getById(communityId);
   }

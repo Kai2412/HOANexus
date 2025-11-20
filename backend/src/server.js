@@ -20,6 +20,7 @@ const authRoutes = require('./routes/authRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const managementTeamRoutes = require('./routes/managementTeamRoutes');
 const dynamicDropChoicesRoutes = require('./routes/dynamicDropChoicesRoutes');
+const bulkUploadRoutes = require('./routes/bulkUploadRoutes');
 
 // Import error handling utilities
 const { globalErrorHandler } = require('./utils/errorHandler');
@@ -79,6 +80,7 @@ app.use('/api/stakeholders', stakeholderRoutes);
 // app.use('/api/amenities', amenityRoutes); // Temporarily disabled - will be rebuilt with new table
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/dynamic-drop-choices', dynamicDropChoicesRoutes);
+app.use('/api/admin/bulk-upload', bulkUploadRoutes);
 
 // Test database connection endpoint
 app.get('/api/test-db', async (req, res) => {

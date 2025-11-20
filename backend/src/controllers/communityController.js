@@ -90,18 +90,15 @@ const updatableFields = new Set([
 const createCommunity = async (req, res) => {
   const payload = {};
 
-  // Validate required fields
-  if (!req.body.DisplayName) {
-    return res.status(400).json({
-      success: false,
-      message: 'Display Name is required'
-    });
-  }
+  // Validate required fields: PropertyCode OR (DisplayName AND LegalName)
+  const hasPcode = req.body.PropertyCode && req.body.PropertyCode.trim();
+  const hasDisplayName = req.body.DisplayName && req.body.DisplayName.trim();
+  const hasLegalName = req.body.LegalName && req.body.LegalName.trim();
 
-  if (!req.body.ClientType) {
+  if (!hasPcode && (!hasDisplayName || !hasLegalName)) {
     return res.status(400).json({
       success: false,
-      message: 'Client Type is required'
+      message: 'Either PropertyCode OR both DisplayName and LegalName are required'
     });
   }
 
@@ -170,6 +167,15 @@ const updateCommunity = async (req, res) => {
         const parsed = Number(value);
         payload[key] = Number.isNaN(parsed) ? null : parsed;
       }
+    } else if (key === 'Active') {
+      // Convert Active to boolean (handle string "true"/"false", "1"/"0", etc.)
+      if (value === true || value === 'true' || value === 1 || value === '1') {
+        payload[key] = true;
+      } else if (value === false || value === 'false' || value === 0 || value === '0') {
+        payload[key] = false;
+      } else {
+        payload[key] = null;
+      }
     } else if (typeof value === 'string') {
       payload[key] = value.trim() === '' ? null : value;
     } else {
@@ -211,11 +217,40 @@ const updateCommunity = async (req, res) => {
       data: updatedCommunity
     });
   } catch (error) {
+    // Log full error details for debugging
+    const errorDetails = {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      number: error.number,
+      state: error.state,
+      class: error.class,
+      serverName: error.serverName,
+      procName: error.procName,
+      lineNumber: error.lineNumber
+    };
+    
+    logger.error('Community update error:', {
+      ...errorDetails,
+      communityId: id,
+      payload: payload
+    });
     logger.databaseError('update', 'community', error, 'CommunityController');
-    res.status(500).json({
+    
+    // Return 400 for validation errors, 500 for server errors
+    const statusCode = error.message && (
+      error.message.includes('required') || 
+      error.message.includes('invalid') ||
+      error.message.includes('not found') ||
+      error.number === 515 || // SQL Server: Cannot insert NULL
+      error.number === 547    // SQL Server: Foreign key constraint
+    ) ? 400 : 500;
+    
+    res.status(statusCode).json({
       success: false,
-      message: 'Failed to update community',
-      error: error.message
+      message: error.message || 'Failed to update community',
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
     });
   }
 };

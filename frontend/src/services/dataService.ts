@@ -59,9 +59,14 @@ class DataService {
         communityData
       );
       return this.mapCommunityFromDatabase(response.data);
-    } catch (error) {
-      logger.error(`Error updating community ${id}`, 'DataService', { id, communityData }, error as Error);
-      throw error;
+    } catch (error: any) {
+      // Extract better error message
+      const errorMessage = error?.errorData?.message || error?.errorData?.error || error?.message || 'Failed to update community';
+      const enhancedError = new Error(errorMessage);
+      (enhancedError as any).status = error?.status;
+      (enhancedError as any).response = error?.response;
+      logger.error(`Error updating community ${id}`, 'DataService', { id, communityData }, enhancedError as Error);
+      throw enhancedError;
     }
   }
 
@@ -245,6 +250,54 @@ class DataService {
     mapped.units = mapped.builtOutUnits ?? null;
 
     return mapped;
+  }
+
+  // ===== BULK UPLOAD =====
+
+  async downloadCommunitiesTemplate(): Promise<Blob> {
+    try {
+      const blob = await api.get<Blob>('/admin/bulk-upload/communities/template', {
+        responseType: 'blob'
+      });
+      return blob;
+    } catch (error) {
+      logger.dataFetchError('download communities template', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  async validateCommunitiesCSV(file: File): Promise<any> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Don't set Content-Type header - browser will set it automatically with boundary
+      const response = await api.post<{ success: boolean; data: any; message?: string; error?: string }>(
+        '/admin/bulk-upload/communities/validate',
+        formData
+      );
+      return response;
+    } catch (error: any) {
+      // Re-throw with more context
+      const enhancedError = new Error(error.message || 'Failed to validate CSV');
+      (enhancedError as any).status = error.status;
+      (enhancedError as any).originalError = error;
+      logger.dataFetchError('validate communities CSV', enhancedError as Error, 'DataService');
+      throw enhancedError;
+    }
+  }
+
+  async importCommunities(rows: any[], duplicateAction: 'skip' | 'update' | 'import' = 'update'): Promise<any> {
+    try {
+      const response = await api.post<{ success: boolean; data: any; message?: string }>(
+        '/admin/bulk-upload/communities/import',
+        { rows, duplicateAction }
+      );
+      return response;
+    } catch (error) {
+      logger.dataFetchError('import communities', error as Error, 'DataService');
+      throw error;
+    }
   }
 }
 
