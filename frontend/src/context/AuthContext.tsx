@@ -47,11 +47,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const mustChangePassword = user?.mustChangePassword || false;
 
   // Check for existing token on app load
+  // Note: Token validation happens on each API request via authenticateToken middleware
+  // If token is invalid, the backend will return 401 and user will be logged out
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (token) {
-      // TODO: Verify token with backend and get user info
-      // For now, we'll implement this when we build the backend
       logger.info('Found existing auth token', 'AuthContext');
     }
     setIsLoading(false);

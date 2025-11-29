@@ -106,12 +106,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ onBack }) => {
         errorMessage = err.response.data.message;
       }
       setError(errorMessage);
-      console.error('Validation error details:', {
-        message: err.message,
-        errorData: err.errorData,
-        status: err.status,
-        fullError: err
-      });
+      // Validation error details logged via logger in dataService
     } finally {
       setLoading(false);
     }

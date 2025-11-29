@@ -10,6 +10,7 @@ import {
 } from '../FormTemplate';
 import { AssignmentService } from '../../../services';
 import { useLoading, useAuth } from '../../../context';
+import logger from '../../../services/logger';
 
 interface Community {
   id: number;
@@ -140,14 +141,14 @@ const CommunityAssignmentForm: React.FC<CommunityAssignmentFormProps> = ({ selec
         createdBy: user.stakeholderId // Use actual logged-in user's stakeholder ID
       };
 
-      console.log('Submitting assignment request:', assignmentRequest);
+      logger.debug('Submitting assignment request', 'CommunityAssignmentForm', { assignmentRequest });
       
       // Update loading message during API call
       setLoadingMessage('Processing Request...', 'Saving to database...');
       
       const response = await AssignmentService.createAssignmentRequest(assignmentRequest);
       
-      console.log('Assignment request created:', response);
+      logger.debug('Assignment request created', 'CommunityAssignmentForm', { responseId: response.id });
       
       // Update loading message for success
       setLoadingMessage('Success!', `Ticket ${response.ticketNumber} created successfully`);
@@ -162,7 +163,7 @@ const CommunityAssignmentForm: React.FC<CommunityAssignmentFormProps> = ({ selec
         }
       }, 1500);
     } catch (err: any) {
-      console.error('Error submitting assignment request:', err);
+      logger.error('Error submitting assignment request', 'CommunityAssignmentForm', undefined, err as Error);
       hideLoading();
       setError(err.message || 'Failed to submit assignment request');
     }

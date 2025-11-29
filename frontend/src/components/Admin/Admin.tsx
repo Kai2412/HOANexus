@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import logger from '../../services/logger';
 import { 
   CogIcon,
   ChevronDownIcon,
@@ -21,16 +22,19 @@ interface AdminProps {
 }
 
 type DropdownCategory = 
-  | 'client-type' 
-  | 'service-type'
-  | 'management-type'
-  | 'development-stage'
-  | 'acquisition-type'
-  | 'role-management' 
-  | 'stakeholder-types' 
   | 'access-levels'
+  | 'acquisition-type'
+  | 'billing-frequency'
+  | 'client-type'
+  | 'development-stage'
+  | 'fee-type'
+  | 'management-type'
+  | 'notice-requirements'
   | 'preferred-contact-methods'
+  | 'role-management'
+  | 'service-type'
   | 'status'
+  | 'stakeholder-types'
   | 'ticket-statuses';
 type BulkUploadType = 'communities-upload' | 'stakeholders-upload';
 type AdminCategory = 'dynamic-drop-choices' | 'bulk-uploads' | 'other';
@@ -55,6 +59,9 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
   const [managementTypeChoices, setManagementTypeChoices] = useState<DropdownChoice[]>([]);
   const [developmentStageChoices, setDevelopmentStageChoices] = useState<DropdownChoice[]>([]);
   const [acquisitionTypeChoices, setAcquisitionTypeChoices] = useState<DropdownChoice[]>([]);
+  const [feeTypeChoices, setFeeTypeChoices] = useState<DropdownChoice[]>([]);
+  const [billingFrequencyChoices, setBillingFrequencyChoices] = useState<DropdownChoice[]>([]);
+  const [noticeRequirementsChoices, setNoticeRequirementsChoices] = useState<DropdownChoice[]>([]);
   const [stakeholderTypeChoices, setStakeholderTypeChoices] = useState<DropdownChoice[]>([]);
   const [stakeholderSubTypes, setStakeholderSubTypes] = useState<Record<string, DropdownChoice[]>>({});
   const [accessLevelChoices, setAccessLevelChoices] = useState<DropdownChoice[]>([]);
@@ -140,21 +147,21 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
   ];
 
   const dropdownCategories = [
-    // Community Dropdowns
-    { id: 'client-type' as DropdownCategory, name: 'Client Type', description: 'Manage client type options (HOA, Condo, Commercial, etc.)' },
-    { id: 'service-type' as DropdownCategory, name: 'Service Type', description: 'Manage service type options (Full Service, Hybrid, Accounting Only, etc.)' },
-    { id: 'management-type' as DropdownCategory, name: 'Management Type', description: 'Manage management type options (Portfolio, Onsite, Hybrid)' },
-    { id: 'development-stage' as DropdownCategory, name: 'Development Stage', description: 'Manage development stage options (Homeowner Controlled, Declarant Controlled)' },
-    { id: 'acquisition-type' as DropdownCategory, name: 'Acquisition Type', description: 'Manage acquisition type options (Organic, Acquisition)' },
-    // Stakeholder Dropdowns
-    { id: 'stakeholder-types' as DropdownCategory, name: 'Stakeholder Types', description: 'Configure stakeholder types and subtypes' },
+    // Alphabetically organized for easy navigation and future additions
     { id: 'access-levels' as DropdownCategory, name: 'Access Levels', description: 'Configure access levels and permissions (None, View, View+Write, View+Write+Delete)' },
+    { id: 'acquisition-type' as DropdownCategory, name: 'Acquisition Type', description: 'Manage acquisition type options (Organic, Acquisition)' },
+    { id: 'billing-frequency' as DropdownCategory, name: 'Billing Frequency', description: 'Manage billing frequency options (Annual, Monthly, Semi-Annual, Quarterly)' },
+    { id: 'client-type' as DropdownCategory, name: 'Client Type', description: 'Manage client type options (HOA, Condo, Commercial, etc.)' },
+    { id: 'development-stage' as DropdownCategory, name: 'Development Stage', description: 'Manage development stage options (Homeowner Controlled, Declarant Controlled)' },
+    { id: 'fee-type' as DropdownCategory, name: 'Fee Type', description: 'Manage fee type options (Flat Rate, Tiered, Per Unit)' },
+    { id: 'management-type' as DropdownCategory, name: 'Management Type', description: 'Manage management type options (Portfolio, Onsite, Hybrid)' },
+    { id: 'notice-requirements' as DropdownCategory, name: 'Notice Requirements', description: 'Manage notice requirement options (30 Days, 60 Days, 90 Days)' },
     { id: 'preferred-contact-methods' as DropdownCategory, name: 'Preferred Contact Methods', description: 'Manage preferred contact method options (Email, Phone, Mobile, Text, Mail)' },
+    { id: 'role-management' as DropdownCategory, name: 'Role Management', description: 'Manage role hierarchy and titles for community assignments' },
+    { id: 'service-type' as DropdownCategory, name: 'Service Type', description: 'Manage service type options (Full Service, Hybrid, Accounting Only, etc.)' },
     { id: 'status' as DropdownCategory, name: 'Status', description: 'Manage status options (Active, Inactive, Pending, Suspended)' },
-    // Ticket Dropdowns
-    { id: 'ticket-statuses' as DropdownCategory, name: 'Ticket Statuses', description: 'Manage ticket status options (Pending, InProgress, Hold, Completed, Rejected)' },
-    // Other
-    { id: 'role-management' as DropdownCategory, name: 'Role Management', description: 'Manage role hierarchy and titles for community assignments' }
+    { id: 'stakeholder-types' as DropdownCategory, name: 'Stakeholder Types', description: 'Configure stakeholder types and subtypes' },
+    { id: 'ticket-statuses' as DropdownCategory, name: 'Ticket Statuses', description: 'Manage ticket status options (Pending, InProgress, Hold, Completed, Rejected)' }
   ];
 
   // Get description for system-managed choices
@@ -258,6 +265,12 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       loadDevelopmentStageChoices();
     } else if (currentView === 'acquisition-type') {
       loadAcquisitionTypeChoices();
+    } else if (currentView === 'fee-type') {
+      loadFeeTypeChoices();
+    } else if (currentView === 'billing-frequency') {
+      loadBillingFrequencyChoices();
+    } else if (currentView === 'notice-requirements') {
+      loadNoticeRequirementsChoices();
     } else if (currentView === 'stakeholder-types') {
       loadStakeholderTypeChoices();
     } else if (currentView === 'access-levels') {
@@ -280,7 +293,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a: DropdownChoice, b: DropdownChoice) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setClientTypeChoices(choices);
     } catch (error) {
-      console.error('Error loading client type choices:', error);
+      logger.error('Error loading client type choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -316,7 +329,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       
       setStakeholderSubTypes(grouped);
     } catch (error) {
-      console.error('Error loading stakeholder type choices:', error);
+      logger.error('Error loading stakeholder type choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -330,7 +343,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setServiceTypeChoices(choices);
     } catch (error) {
-      console.error('Error loading service type choices:', error);
+      logger.error('Error loading service type choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -344,7 +357,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setManagementTypeChoices(choices);
     } catch (error) {
-      console.error('Error loading management type choices:', error);
+      logger.error('Error loading management type choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -358,7 +371,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setDevelopmentStageChoices(choices);
     } catch (error) {
-      console.error('Error loading development stage choices:', error);
+      logger.error('Error loading development stage choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -372,7 +385,49 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setAcquisitionTypeChoices(choices);
     } catch (error) {
-      console.error('Error loading acquisition type choices:', error);
+      logger.error('Error loading acquisition type choices', 'Admin', undefined, error as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFeeTypeChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['fee-types'], true);
+      const choices = (data['fee-types'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setFeeTypeChoices(choices);
+    } catch (error) {
+      logger.error('Error loading fee type choices', 'Admin', undefined, error as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadBillingFrequencyChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['billing-frequency'], true);
+      const choices = (data['billing-frequency'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setBillingFrequencyChoices(choices);
+    } catch (error) {
+      logger.error('Error loading billing frequency choices', 'Admin', undefined, error as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadNoticeRequirementsChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['notice-requirements'], true);
+      const choices = (data['notice-requirements'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setNoticeRequirementsChoices(choices);
+    } catch (error) {
+      logger.error('Error loading notice requirements choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -386,7 +441,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setAccessLevelChoices(choices);
     } catch (error) {
-      console.error('Error loading access level choices:', error);
+      logger.error('Error loading access level choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -400,7 +455,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setPreferredContactMethodChoices(choices);
     } catch (error) {
-      console.error('Error loading preferred contact method choices:', error);
+      logger.error('Error loading preferred contact method choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -414,7 +469,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setStatusChoices(choices);
     } catch (error) {
-      console.error('Error loading status choices:', error);
+      logger.error('Error loading status choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -428,7 +483,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
       setTicketStatusChoices(choices);
     } catch (error) {
-      console.error('Error loading ticket status choices:', error);
+      logger.error('Error loading ticket status choices', 'Admin', undefined, error as Error);
     } finally {
       setLoading(false);
     }
@@ -441,6 +496,9 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     if (currentView === 'management-type') return managementTypeChoices;
     if (currentView === 'development-stage') return developmentStageChoices;
     if (currentView === 'acquisition-type') return acquisitionTypeChoices;
+    if (currentView === 'fee-type') return feeTypeChoices;
+    if (currentView === 'billing-frequency') return billingFrequencyChoices;
+    if (currentView === 'notice-requirements') return noticeRequirementsChoices;
     if (currentView === 'stakeholder-types') return stakeholderTypeChoices;
     if (currentView === 'access-levels') return accessLevelChoices;
     if (currentView === 'preferred-contact-methods') return preferredContactMethodChoices;
@@ -456,6 +514,9 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       'management-type': 'management-types',
       'development-stage': 'development-stages',
       'acquisition-type': 'acquisition-types',
+      'fee-type': 'fee-types',
+      'billing-frequency': 'billing-frequency',
+      'notice-requirements': 'notice-requirements',
       'stakeholder-types': 'stakeholder-types',
       'access-levels': 'access-levels',
       'preferred-contact-methods': 'preferred-contact-methods',
@@ -472,6 +533,9 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     else if (currentView === 'management-type') loadManagementTypeChoices();
     else if (currentView === 'development-stage') loadDevelopmentStageChoices();
     else if (currentView === 'acquisition-type') loadAcquisitionTypeChoices();
+    else if (currentView === 'fee-type') loadFeeTypeChoices();
+    else if (currentView === 'billing-frequency') loadBillingFrequencyChoices();
+    else if (currentView === 'notice-requirements') loadNoticeRequirementsChoices();
     else if (currentView === 'stakeholder-types') loadStakeholderTypeChoices();
     else if (currentView === 'access-levels') loadAccessLevelChoices();
     else if (currentView === 'preferred-contact-methods') loadPreferredContactMethodChoices();
@@ -489,7 +553,10 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     else if (currentView === 'service-type') setServiceTypeChoices(newChoices);
     else if (currentView === 'management-type') setManagementTypeChoices(newChoices);
     else if (currentView === 'development-stage') setDevelopmentStageChoices(newChoices);
-    else if (currentView === 'acquisition-type') setAcquisitionTypeChoices(newChoices);
+    else     if (currentView === 'acquisition-type') setAcquisitionTypeChoices(newChoices);
+    else if (currentView === 'fee-type') setFeeTypeChoices(newChoices);
+    else if (currentView === 'billing-frequency') setBillingFrequencyChoices(newChoices);
+    else if (currentView === 'notice-requirements') setNoticeRequirementsChoices(newChoices);
     else if (currentView === 'stakeholder-types') setStakeholderTypeChoices(newChoices);
     else if (currentView === 'access-levels') setAccessLevelChoices(newChoices);
     else if (currentView === 'preferred-contact-methods') setPreferredContactMethodChoices(newChoices);
@@ -510,6 +577,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     else if (currentView === 'management-type') setManagementTypeChoices(newChoices);
     else if (currentView === 'development-stage') setDevelopmentStageChoices(newChoices);
     else if (currentView === 'acquisition-type') setAcquisitionTypeChoices(newChoices);
+    else if (currentView === 'fee-type') setFeeTypeChoices(newChoices);
     else if (currentView === 'stakeholder-types') setStakeholderTypeChoices(newChoices);
     else if (currentView === 'access-levels') setAccessLevelChoices(newChoices);
     else if (currentView === 'preferred-contact-methods') setPreferredContactMethodChoices(newChoices);
@@ -545,7 +613,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         newSubTypes.map((st) => ({ choiceId: st.ChoiceID }))
       );
     } catch (error) {
-      console.error('Error saving subtype order:', error);
+      logger.error('Error saving subtype order', 'Admin', undefined, error as Error);
       loadStakeholderTypeChoices(); // Reload on error
     }
   };
@@ -576,7 +644,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         newSubTypes.map((st) => ({ choiceId: st.ChoiceID }))
       );
     } catch (error) {
-      console.error('Error saving subtype order:', error);
+      logger.error('Error saving subtype order', 'Admin', undefined, error as Error);
       loadStakeholderTypeChoices(); // Reload on error
     }
   };
@@ -590,7 +658,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         choices.map(c => ({ choiceId: c.ChoiceID }))
       );
     } catch (error) {
-      console.error('Error saving order:', error);
+      logger.error('Error saving order', 'Admin', undefined, error as Error);
       // Reload on error
       reloadCurrentChoices();
     }
@@ -612,7 +680,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       setEditingValue('');
       reloadCurrentChoices();
     } catch (error) {
-      console.error('Error updating choice:', error);
+      logger.error('Error updating choice', 'Admin', undefined, error as Error);
     }
   };
 
@@ -631,7 +699,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       await dataService.toggleDynamicDropChoiceActive(choice.ChoiceID, newActiveStatus);
       reloadCurrentChoices();
     } catch (error) {
-      console.error('Error toggling active status:', error);
+      logger.error('Error toggling active status', 'Admin', undefined, error as Error);
     }
   };
 
@@ -644,7 +712,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       });
       reloadCurrentChoices();
     } catch (error) {
-      console.error('Error setting default:', error);
+      logger.error('Error setting default', 'Admin', undefined, error as Error);
     }
   };
 
@@ -662,7 +730,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       setAddingNew(false);
       reloadCurrentChoices();
     } catch (error) {
-      console.error('Error creating choice:', error);
+      logger.error('Error creating choice', 'Admin', undefined, error as Error);
     }
   };
 
@@ -692,7 +760,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       setAddingSubTypeFor(null);
       loadStakeholderTypeChoices(); // Reload to get the new subtype
     } catch (error) {
-      console.error('Error creating subtype:', error);
+      logger.error('Error creating subtype', 'Admin', undefined, error as Error);
     }
   };
 
@@ -1157,9 +1225,11 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  // TODO: Add new title
+                  // Feature not yet implemented - Role Management titles functionality
                 }}
-                className="flex items-center space-x-1 px-3 py-1 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                className="flex items-center space-x-1 px-3 py-1 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors opacity-50 cursor-not-allowed"
+                disabled
+                title="Feature coming soon"
               >
                 <PlusIcon className="w-4 h-4" />
                 <span>Add Title</span>
@@ -1185,25 +1255,26 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
                         </div>
                         <div className="flex items-center space-x-2">
                           <button
-                            onClick={() => {/* TODO: Move up */}}
-                            disabled={index === 0}
-                            className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            title="Move up"
+                            onClick={() => {/* Feature not yet implemented */}}
+                            disabled
+                            className="p-2 text-tertiary opacity-30 cursor-not-allowed transition-colors"
+                            title="Feature coming soon"
                           >
                             <ArrowUpIcon className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => {/* TODO: Move down */}}
-                            disabled={index === role.titles.length - 1}
-                            className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            title="Move down"
+                            onClick={() => {/* Feature not yet implemented */}}
+                            disabled
+                            className="p-2 text-tertiary opacity-30 cursor-not-allowed transition-colors"
+                            title="Feature coming soon"
                           >
                             <ArrowDownIcon className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => {/* TODO: Edit */}}
-                            className="p-2 text-tertiary hover:text-royal-600 dark:hover:text-royal-400 transition-colors"
-                            title="Edit"
+                            onClick={() => {/* Feature not yet implemented */}}
+                            disabled
+                            className="p-2 text-tertiary opacity-30 cursor-not-allowed transition-colors"
+                            title="Feature coming soon"
                           >
                             <PencilIcon className="w-4 h-4" />
                           </button>
@@ -1241,6 +1312,9 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         'management-type': 'Management Type Management',
         'development-stage': 'Development Stage Management',
         'acquisition-type': 'Acquisition Type Management',
+        'fee-type': 'Fee Type Management',
+        'billing-frequency': 'Billing Frequency Management',
+        'notice-requirements': 'Notice Requirements Management',
         'stakeholder-types': 'Stakeholder Types Management',
         'access-levels': 'Access Levels Management',
         'preferred-contact-methods': 'Preferred Contact Methods Management',
@@ -1264,7 +1338,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     // Check if it's a dropdown category
     const dropdownCategories: DropdownCategory[] = [
       'client-type', 'service-type', 'management-type', 'development-stage',
-      'acquisition-type', 'stakeholder-types', 'access-levels',
+      'acquisition-type', 'fee-type', 'billing-frequency', 'notice-requirements', 'stakeholder-types', 'access-levels',
       'preferred-contact-methods', 'status', 'ticket-statuses', 'role-management'
     ];
     
@@ -1275,6 +1349,9 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         'management-type': 'Manage management type options for communities (Portfolio, Onsite, Hybrid).',
         'development-stage': 'Manage development stage options for communities (Homeowner Controlled, Declarant Controlled).',
         'acquisition-type': 'Manage acquisition type options for communities (Organic, Acquisition).',
+        'fee-type': 'Manage fee type options for management fees (Flat Rate, Tiered, Per Unit).',
+        'billing-frequency': 'Manage billing frequency options (Annual, Monthly, Semi-Annual, Quarterly).',
+        'notice-requirements': 'Manage notice requirement options (30 Days, 60 Days, 90 Days).',
         'stakeholder-types': 'Configure stakeholder types and subtypes',
         'access-levels': 'Manage access levels (None, View, View+Write, View+Write+Delete). System-managed levels cannot be edited or deleted as they are required for permission control.',
         'preferred-contact-methods': 'Manage preferred contact method options (Email, Phone, Mobile, Text, Mail).',
@@ -1407,6 +1484,18 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
               {currentView === 'acquisition-type' && renderDropdownManagement(
                 'Acquisition Type Management',
                 'Manage acquisition type options for communities (Organic, Acquisition).'
+              )}
+              {currentView === 'fee-type' && renderDropdownManagement(
+                'Fee Type Management',
+                'Manage fee type options for management fees (Flat Rate, Tiered, Per Unit).'
+              )}
+              {currentView === 'billing-frequency' && renderDropdownManagement(
+                'Billing Frequency Management',
+                'Manage billing frequency options (Annual, Monthly, Semi-Annual, Quarterly).'
+              )}
+              {currentView === 'notice-requirements' && renderDropdownManagement(
+                'Notice Requirements Management',
+                'Manage notice requirement options (30 Days, 60 Days, 90 Days).'
               )}
               {/* Stakeholder Dropdowns */}
               {currentView === 'stakeholder-types' && renderStakeholderTypesManagement()}

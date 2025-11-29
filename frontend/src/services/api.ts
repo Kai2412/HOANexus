@@ -77,7 +77,7 @@ class ApiService {
           }
         } catch (e) {
           // If response is not JSON, use default message
-          console.error('Failed to parse error response as JSON:', e);
+          // Error response is not JSON, use default error message
         }
         const error = new Error(errorMessage);
         (error as any).status = response.status;

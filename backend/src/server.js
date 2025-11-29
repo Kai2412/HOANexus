@@ -14,6 +14,9 @@ const { getConnection } = require('./config/database');
 const communityRoutes = require('./routes/communityRoutes');
 // const propertyRoutes = require('./routes/propertyRoutes'); // Temporarily disabled - will be rebuilt with new table
 const stakeholderRoutes = require('./routes/stakeholderRoutes');
+const managementFeeRoutes = require('./routes/managementFeeRoutes');
+const billingInformationRoutes = require('./routes/billingInformationRoutes');
+const boardInformationRoutes = require('./routes/boardInformationRoutes');
 // const amenityRoutes = require('./routes/amenityRoutes'); // Temporarily disabled - will be rebuilt with new table
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -75,6 +78,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/management-team', managementTeamRoutes);
 app.use('/api/communities', communityRoutes);
+app.use('/api/management-fees', managementFeeRoutes);
+app.use('/api/billing-information', billingInformationRoutes);
+app.use('/api/board-information', boardInformationRoutes);
 // app.use('/api/properties', propertyRoutes); // Temporarily disabled - will be rebuilt with new table
 app.use('/api/stakeholders', stakeholderRoutes);
 // app.use('/api/amenities', amenityRoutes); // Temporarily disabled - will be rebuilt with new table

@@ -10,6 +10,7 @@ import { stakeholderService } from '../../../services/stakeholderService';
 import dataService from '../../../services/dataService';
 import type { Community } from '../../../types/community';
 import type { DynamicDropChoice } from '../../../types/reference';
+import logger from '../../../services/logger';
 
 interface AddStakeholderProps {
   onSuccess?: (stakeholder: any) => void;
@@ -133,7 +134,7 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
         }));
       }
     } catch (error) {
-      console.error('Error loading dropdowns:', error);
+      logger.error('Error loading dropdowns', 'AddStakeholder', undefined, error as Error);
     } finally {
       setDropdownsLoading(false);
     }
@@ -170,7 +171,7 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
       const communitiesData = await dataService.getCommunities();
       setCommunities(communitiesData);
     } catch (error) {
-      console.error('Error loading communities:', error);
+      logger.error('Error loading communities', 'AddStakeholder', undefined, error as Error);
     } finally {
       setCommunitiesLoading(false);
     }
@@ -307,7 +308,7 @@ const AddStakeholder: React.FC<AddStakeholderProps> = ({ onSuccess, onCancel }) 
         setError(response.message || 'Failed to create stakeholder');
       }
     } catch (err: any) {
-      console.error('Error creating stakeholder:', err);
+      logger.error('Error creating stakeholder', 'AddStakeholder', undefined, err as Error);
       setError(err.response?.data?.message || 'Failed to create stakeholder. Please try again.');
     } finally {
       setLoading(false);

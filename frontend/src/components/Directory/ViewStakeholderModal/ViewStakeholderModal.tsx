@@ -13,6 +13,7 @@ import {
   CheckIcon
 } from '@heroicons/react/24/outline';
 import type { Stakeholder } from '../../../types/stakeholder';
+import logger from '../../../services/logger';
 
 interface ViewStakeholderModalProps {
   isOpen: boolean;
@@ -33,7 +34,7 @@ const ViewStakeholderModal: React.FC<ViewStakeholderModalProps> = ({
       setCopiedField(fieldName);
       setTimeout(() => setCopiedField(null), 2000);
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      logger.warn('Failed to copy to clipboard', 'ViewStakeholderModal', { field: fieldName }, err as Error);
     }
   };
 

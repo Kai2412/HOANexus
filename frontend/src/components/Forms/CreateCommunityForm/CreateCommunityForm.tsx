@@ -11,6 +11,7 @@ import {
 import dataService from '../../../services/dataService';
 import { useAuth } from '../../../context';
 import type { UpdateCommunityData } from '../../../types/community';
+import logger from '../../../services/logger';
 
 interface CreateCommunityFormProps {
   onSuccess?: (community: any) => void;
@@ -134,7 +135,7 @@ const CreateCommunityForm: React.FC<CreateCommunityFormProps> = ({ onSuccess, on
         
         setDropdownOptions(options);
       } catch (err) {
-        console.error('Failed to load dropdown options', err);
+        logger.error('Failed to load dropdown options', 'CreateCommunityForm', undefined, err as Error);
       } finally {
         setLoadingDropdowns(false);
       }
@@ -215,7 +216,7 @@ const CreateCommunityForm: React.FC<CreateCommunityFormProps> = ({ onSuccess, on
         }, 1500);
       }
     } catch (err: any) {
-      console.error('Error creating community:', err);
+      logger.error('Error creating community', 'CreateCommunityForm', undefined, err as Error);
       setError(err.response?.data?.message || err.message || 'Failed to create community. Please try again.');
     } finally {
       setSubmitting(false);

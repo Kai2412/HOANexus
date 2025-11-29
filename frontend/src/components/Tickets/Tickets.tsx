@@ -11,6 +11,7 @@ import {
 import { TicketService } from '../../services';
 import type { Ticket, TicketListResponse } from '../../services/ticketService';
 import { useLoading } from '../../context';
+import logger from '../../services/logger';
 
 interface TicketsProps {
   onClose?: () => void;
@@ -66,7 +67,7 @@ const Tickets: React.FC<TicketsProps> = ({ onClose }) => {
       setTickets(response.tickets);
       setTotalTickets(response.totalCount);
     } catch (err) {
-      console.error('Error loading tickets:', err);
+      logger.error('Error loading tickets', 'Tickets', undefined, err as Error);
       setError('Failed to load tickets. Please try again.');
       setTickets([]);
       setTotalTickets(0);

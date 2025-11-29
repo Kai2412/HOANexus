@@ -3,6 +3,9 @@ export * from './community';
 export * from './property';
 export * from './stakeholder';
 export * from './amenity';
+export * from './managementFee';
+export * from './billingInformation';
+export * from './boardInformation';
 export * from './api';
 export * from './reference';
 

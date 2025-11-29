@@ -13,6 +13,18 @@ import type {
   StakeholdersApiResponse,
   StakeholderApiResponse,
   DynamicDropChoiceMap,
+  ManagementFee,
+  DatabaseManagementFee,
+  CreateManagementFeeData,
+  UpdateManagementFeeData,
+  BillingInformation,
+  DatabaseBillingInformation,
+  CreateBillingInformationData,
+  UpdateBillingInformationData,
+  BoardInformation,
+  DatabaseBoardInformation,
+  CreateBoardInformationData,
+  UpdateBoardInformationData,
 } from '../types';
 
 class DataService {
@@ -202,6 +214,235 @@ class DataService {
       logger.error('Error updating choice order', 'DataService', { groupId, choices }, error as Error);
       throw error;
     }
+  }
+
+  // ===== MANAGEMENT FEES =====
+
+  async getManagementFeeByCommunity(communityId: string): Promise<ManagementFee | null> {
+    try {
+      const response = await api.get<{ success: boolean; data: DatabaseManagementFee | null; message?: string }>(
+        `/management-fees/community/${communityId}`
+      );
+      if (!response.data) {
+        return null;
+      }
+      return this.mapManagementFeeFromDatabase(response.data);
+    } catch (error) {
+      // 404 means no management fee exists yet - return null
+      if ((error as any)?.response?.status === 404) {
+        return null;
+      }
+      logger.dataFetchError('management fee by community', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  async getManagementFeeById(id: string): Promise<ManagementFee> {
+    try {
+      const response = await api.get<{ success: boolean; data: DatabaseManagementFee; message?: string }>(
+        `/management-fees/${id}`
+      );
+      return this.mapManagementFeeFromDatabase(response.data);
+    } catch (error) {
+      logger.dataFetchError('management fee by ID', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  async createManagementFee(data: CreateManagementFeeData): Promise<ManagementFee> {
+    try {
+      const response = await api.post<{ success: boolean; data: DatabaseManagementFee; message?: string }>(
+        '/management-fees',
+        data
+      );
+      return this.mapManagementFeeFromDatabase(response.data);
+    } catch (error) {
+      logger.error('Error creating management fee', 'DataService', data, error as Error);
+      throw error;
+    }
+  }
+
+  async updateManagementFee(id: string, data: UpdateManagementFeeData): Promise<ManagementFee> {
+    try {
+      const response = await api.put<{ success: boolean; data: DatabaseManagementFee; message?: string }>(
+        `/management-fees/${id}`,
+        data
+      );
+      return this.mapManagementFeeFromDatabase(response.data);
+    } catch (error) {
+      logger.error(`Error updating management fee ${id}`, 'DataService', { id, data }, error as Error);
+      throw error;
+    }
+  }
+
+  private mapManagementFeeFromDatabase(db: DatabaseManagementFee): ManagementFee {
+    return {
+      id: db.ManagementFeesID,
+      communityId: db.CommunityID,
+      managementFee: db.ManagementFee,
+      perUnitFee: db.PerUnitFee,
+      feeType: db.FeeType,
+      increaseType: db.IncreaseType,
+      increaseEffective: db.IncreaseEffective,
+      boardApprovalRequired: db.BoardApprovalRequired,
+      autoIncrease: db.AutoIncrease,
+      fixedCost: db.FixedCost,
+      createdOn: db.CreatedOn,
+      createdBy: db.CreatedBy,
+      modifiedOn: db.ModifiedOn,
+      modifiedBy: db.ModifiedBy,
+      isActive: db.IsActive
+    };
+  }
+
+  // ===== BILLING INFORMATION =====
+
+  async getBillingInformationByCommunity(communityId: string): Promise<BillingInformation | null> {
+    try {
+      const response = await api.get<{ success: boolean; data: DatabaseBillingInformation | null; message?: string }>(
+        `/billing-information/community/${communityId}`
+      );
+      if (!response.data) {
+        return null;
+      }
+      return this.mapBillingInformationFromDatabase(response.data);
+    } catch (error) {
+      // 404 means no billing information exists yet - return null
+      if ((error as any)?.response?.status === 404) {
+        return null;
+      }
+      logger.dataFetchError('billing information by community', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  async getBillingInformationById(id: string): Promise<BillingInformation> {
+    try {
+      const response = await api.get<{ success: boolean; data: DatabaseBillingInformation; message?: string }>(
+        `/billing-information/${id}`
+      );
+      return this.mapBillingInformationFromDatabase(response.data);
+    } catch (error) {
+      logger.dataFetchError('billing information by ID', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  async createBillingInformation(data: CreateBillingInformationData): Promise<BillingInformation> {
+    try {
+      const response = await api.post<{ success: boolean; data: DatabaseBillingInformation; message?: string }>(
+        '/billing-information',
+        data
+      );
+      return this.mapBillingInformationFromDatabase(response.data);
+    } catch (error) {
+      logger.error('Error creating billing information', 'DataService', data, error as Error);
+      throw error;
+    }
+  }
+
+  async updateBillingInformation(id: string, data: UpdateBillingInformationData): Promise<BillingInformation> {
+    try {
+      const response = await api.put<{ success: boolean; data: DatabaseBillingInformation; message?: string }>(
+        `/billing-information/${id}`,
+        data
+      );
+      return this.mapBillingInformationFromDatabase(response.data);
+    } catch (error) {
+      logger.error(`Error updating billing information ${id}`, 'DataService', { id, data }, error as Error);
+      throw error;
+    }
+  }
+
+  private mapBillingInformationFromDatabase(db: DatabaseBillingInformation): BillingInformation {
+    return {
+      id: db.BillingInformationID,
+      communityId: db.CommunityID,
+      billingFrequency: db.BillingFrequency,
+      billingMonth: db.BillingMonth,
+      billingDay: db.BillingDay,
+      noticeRequirement: db.NoticeRequirement,
+      coupon: db.Coupon,
+      createdOn: db.CreatedOn,
+      createdBy: db.CreatedBy,
+      modifiedOn: db.ModifiedOn,
+      modifiedBy: db.ModifiedBy,
+      isActive: db.IsActive
+    };
+  }
+
+  async getBoardInformationByCommunity(communityId: string): Promise<BoardInformation | null> {
+    try {
+      const response = await api.get<{ success: boolean; data: DatabaseBoardInformation | null; message?: string }>(
+        `/board-information/community/${communityId}`
+      );
+      if (!response.data) {
+        return null;
+      }
+      return this.mapBoardInformationFromDatabase(response.data);
+    } catch (error) {
+      // 404 means no board information exists yet - return null
+      if ((error as any)?.response?.status === 404) {
+        return null;
+      }
+      logger.dataFetchError('board information by community', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  async getBoardInformationById(id: string): Promise<BoardInformation> {
+    try {
+      const response = await api.get<{ success: boolean; data: DatabaseBoardInformation; message?: string }>(
+        `/board-information/${id}`
+      );
+      return this.mapBoardInformationFromDatabase(response.data);
+    } catch (error) {
+      logger.dataFetchError('board information by ID', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  async createBoardInformation(data: CreateBoardInformationData): Promise<BoardInformation> {
+    try {
+      const response = await api.post<{ success: boolean; data: DatabaseBoardInformation; message?: string }>(
+        '/board-information',
+        data
+      );
+      return this.mapBoardInformationFromDatabase(response.data);
+    } catch (error) {
+      logger.error('Error creating board information', 'DataService', data, error as Error);
+      throw error;
+    }
+  }
+
+  async updateBoardInformation(id: string, data: UpdateBoardInformationData): Promise<BoardInformation> {
+    try {
+      const response = await api.put<{ success: boolean; data: DatabaseBoardInformation; message?: string }>(
+        `/board-information/${id}`,
+        data
+      );
+      return this.mapBoardInformationFromDatabase(response.data);
+    } catch (error) {
+      logger.error(`Error updating board information ${id}`, 'DataService', { id, data }, error as Error);
+      throw error;
+    }
+  }
+
+  private mapBoardInformationFromDatabase(db: DatabaseBoardInformation): BoardInformation {
+    return {
+      id: db.BoardInformationID,
+      communityId: db.CommunityID,
+      annualMeetingFrequency: db.AnnualMeetingFrequency,
+      regularMeetingFrequency: db.RegularMeetingFrequency,
+      boardMembersRequired: db.BoardMembersRequired,
+      quorum: db.Quorum,
+      termLimits: db.TermLimits,
+      createdOn: db.CreatedOn,
+      createdBy: db.CreatedBy,
+      modifiedOn: db.ModifiedOn,
+      modifiedBy: db.ModifiedBy,
+      isActive: db.IsActive
+    };
   }
 
   private mapCommunityFromDatabase(community: DatabaseCommunity): Community {

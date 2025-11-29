@@ -12,6 +12,7 @@ import { stakeholderService } from '../../../services/stakeholderService';
 import dataService from '../../../services/dataService';
 import type { Community } from '../../../types/community';
 import type { DynamicDropChoice } from '../../../types/reference';
+import logger from '../../../services/logger';
 
 interface EditStakeholderModalProps {
   isOpen: boolean;
@@ -152,7 +153,7 @@ const EditStakeholderModal: React.FC<EditStakeholderModalProps> = ({
       // Set statuses
       setStatuses(response['status'] || []);
     } catch (error) {
-      console.error('Error loading dropdowns:', error);
+      logger.error('Error loading dropdowns', 'EditStakeholderModal', undefined, error as Error);
     } finally {
       setDropdownsLoading(false);
     }
@@ -183,7 +184,7 @@ const EditStakeholderModal: React.FC<EditStakeholderModalProps> = ({
       const communitiesData = await dataService.getCommunities();
       setCommunities(communitiesData);
     } catch (error) {
-      console.error('Error loading communities:', error);
+      logger.error('Error loading communities', 'EditStakeholderModal', undefined, error as Error);
     } finally {
       setCommunitiesLoading(false);
     }
@@ -218,7 +219,7 @@ const EditStakeholderModal: React.FC<EditStakeholderModalProps> = ({
       setCopiedField(fieldName);
       setTimeout(() => setCopiedField(null), 2000);
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      logger.warn('Failed to copy to clipboard', 'EditStakeholderModal', { fieldName }, err as Error);
     }
   };
 
@@ -311,7 +312,7 @@ const EditStakeholderModal: React.FC<EditStakeholderModalProps> = ({
         setError(response.message || 'Failed to update stakeholder');
       }
     } catch (err: any) {
-      console.error('Error updating stakeholder:', err);
+      logger.error('Error updating stakeholder', 'EditStakeholderModal', { stakeholderId: stakeholder?.StakeholderID }, err as Error);
       setError(err.response?.data?.message || 'Failed to update stakeholder. Please try again.');
     } finally {
       setLoading(false);

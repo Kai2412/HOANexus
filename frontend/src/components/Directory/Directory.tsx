@@ -7,6 +7,7 @@ import DirectoryLookup from './DirectoryLookup';
 import type { Stakeholder } from '../../types/stakeholder';
 import { STAKEHOLDER_TYPES, STAKEHOLDER_STATUSES } from '../../types/stakeholder';
 import { stakeholderService } from '../../services/stakeholderService';
+import logger from '../../services/logger';
 
 interface DirectoryProps {
   onBackToCommunity?: () => void;
@@ -53,7 +54,6 @@ const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakehold
     setError(null);
     try {
       const response = await stakeholderService.getAllStakeholders();
-      console.log('Stakeholder API Response:', response);
       if (response.success) {
         // Sort stakeholders alphabetically by first name, then last name
         const sortedStakeholders = response.data.sort((a, b) => {
@@ -76,7 +76,7 @@ const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakehold
       }
     } catch (err) {
       setError('Failed to load stakeholders. Please try again.');
-      console.error('Error loading stakeholders:', err);
+      logger.error('Error loading stakeholders', 'Directory', undefined, err as Error);
     } finally {
       setLoading(false);
     }
@@ -123,7 +123,7 @@ const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakehold
       }
     } catch (err) {
       setError('Failed to delete stakeholder. Please try again.');
-      console.error('Error deleting stakeholder:', err);
+      logger.error('Error deleting stakeholder', 'Directory', undefined, err as Error);
     }
   };
 
@@ -147,13 +147,13 @@ const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakehold
         return aLastName.localeCompare(bLastName);
       });
     });
-    console.log('Stakeholder updated:', updatedStakeholder);
+    logger.debug('Stakeholder updated', 'Directory', { stakeholderId: updatedStakeholder.StakeholderID });
   };
 
   const handleViewStakeholder = (stakeholder: Stakeholder) => {
     setSelectedStakeholder(stakeholder);
     // For now, just log - in the future this could open a detailed view modal
-    console.log('View stakeholder:', stakeholder);
+    logger.debug('View stakeholder', 'Directory', { stakeholderId: stakeholder.StakeholderID });
   };
 
   const renderBreadcrumbs = () => {

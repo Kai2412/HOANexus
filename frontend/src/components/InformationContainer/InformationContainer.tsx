@@ -110,8 +110,8 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
                 window.dispatchEvent(new CustomEvent('overlay:close'));
               }}
               onFormNavigation={(category, form) => {
-                console.log(`Navigate to form: ${category} > ${form}`);
-                // TODO: Implement form navigation
+                // Form navigation is handled by the Forms component
+                // Logging handled by Forms component
               }}
             />
           </div>

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import SimpleAddressInput from './SimpleAddressInput';
+import logger from '../../services/logger';
 
 interface PlacesAutocompleteProps {
   value: string;
@@ -72,7 +73,7 @@ const HTTPPlacesAutocomplete: React.FC<PlacesAutocompleteProps> = ({
         setShowPredictions(false);
       }
     } catch (error) {
-      console.error('❌ Error searching places:', error);
+      logger.error('Error searching places', 'PlacesAutocomplete', { query: inputValue }, error as Error);
       setPredictions([]);
       setShowPredictions(false);
     } finally {
@@ -129,7 +130,7 @@ const HTTPPlacesAutocomplete: React.FC<PlacesAutocompleteProps> = ({
       setPredictions([]);
       
     } catch (error) {
-      console.error('Error getting place details:', error);
+      logger.error('Error getting place details', 'PlacesAutocomplete', { placeId }, error as Error);
       // Fallback to just using the prediction
       onChange(prediction.placePrediction.text.text);
       if (onPlaceSelected) {

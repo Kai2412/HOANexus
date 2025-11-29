@@ -9,6 +9,7 @@ import type {
   StakeholderTypeParams
 } from '../types/stakeholder';
 import api from './api';
+import logger from './logger';
 
 class StakeholderService {
   private baseUrl = '/stakeholders';
@@ -21,7 +22,7 @@ class StakeholderService {
       const response = await api.get(this.baseUrl);
       return response;
     } catch (error) {
-      console.error('Error fetching stakeholders:', error);
+      logger.error('Error fetching stakeholders', 'StakeholderService', undefined, error as Error);
       throw error;
     }
   }
@@ -34,7 +35,7 @@ class StakeholderService {
       const response = await api.get(`${this.baseUrl}/${id}`);
       return response;
     } catch (error) {
-      console.error(`Error fetching stakeholder ${id}:`, error);
+      logger.error(`Error fetching stakeholder ${id}`, 'StakeholderService', { id }, error as Error);
       throw error;
     }
   }
@@ -47,7 +48,7 @@ class StakeholderService {
       const response = await api.get(`${this.baseUrl}/type/${encodeURIComponent(type)}`);
       return response;
     } catch (error) {
-      console.error(`Error fetching stakeholders by type ${type}:`, error);
+      logger.error(`Error fetching stakeholders by type ${type}`, 'StakeholderService', { type }, error as Error);
       throw error;
     }
   }
@@ -62,7 +63,7 @@ class StakeholderService {
       });
       return response;
     } catch (error) {
-      console.error(`Error searching stakeholders with query "${params.q}":`, error);
+      logger.error(`Error searching stakeholders with query "${params.q}"`, 'StakeholderService', { query: params.q }, error as Error);
       throw error;
     }
   }
@@ -93,7 +94,7 @@ class StakeholderService {
       const response = await api.post(this.baseUrl, backendData);
       return response;
     } catch (error) {
-      console.error('Error creating stakeholder:', error);
+      logger.error('Error creating stakeholder', 'StakeholderService', undefined, error as Error);
       throw error;
     }
   }
@@ -124,7 +125,7 @@ class StakeholderService {
       const response = await api.put(`${this.baseUrl}/${id}`, backendData);
       return response;
     } catch (error) {
-      console.error(`Error updating stakeholder ${id}:`, error);
+      logger.error(`Error updating stakeholder ${id}`, 'StakeholderService', { id }, error as Error);
       throw error;
     }
   }
@@ -137,7 +138,7 @@ class StakeholderService {
       const response = await api.delete(`${this.baseUrl}/${id}`);
       return response;
     } catch (error) {
-      console.error(`Error deleting stakeholder ${id}:`, error);
+      logger.error(`Error deleting stakeholder ${id}`, 'StakeholderService', { id }, error as Error);
       throw error;
     }
   }
@@ -150,7 +151,7 @@ class StakeholderService {
       const response = await api.get(`${this.baseUrl}/${id}/properties`);
       return response;
     } catch (error) {
-      console.error(`Error fetching stakeholder ${id} with properties:`, error);
+      logger.error(`Error fetching stakeholder ${id} with properties`, 'StakeholderService', { id }, error as Error);
       throw error;
     }
   }

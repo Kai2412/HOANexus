@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BuildingOfficeIcon, DocumentTextIcon, ClockIcon, CogIcon, PencilIcon, UserGroupIcon } from '@heroicons/react/24/outline';
-import type { Community, UpdateCommunityData } from '../../types';
+import { BuildingOfficeIcon, DocumentTextIcon, ClockIcon, CogIcon, PencilIcon, UserGroupIcon, CurrencyDollarIcon, CreditCardIcon, UsersIcon } from '@heroicons/react/24/outline';
+import type { Community, UpdateCommunityData, ManagementFee, CreateManagementFeeData, UpdateManagementFeeData, BillingInformation, CreateBillingInformationData, UpdateBillingInformationData, BoardInformation, CreateBoardInformationData, UpdateBoardInformationData } from '../../types';
 import { getCommunityStatusColor, getCommunityStatusColorName, getCommunityTypeColor, getCommunityTypeColorName } from '../../utils/statusColors';
 import { CommunitySearchBar, SearchResultsIndicator } from '../CommunitySearchBar';
 import { useCommunitySearch } from '../../hooks/useCommunitySearch';
 import EditModal from '../EditModal';
 import type { FieldConfig } from '../EditModal';
 import dataService from '../../services/dataService';
+import logger from '../../services/logger';
 
 interface CommunityInfoProps {
   community: Community;
@@ -34,12 +35,15 @@ type ChoiceOption = {
   isDefault?: boolean;
 };
 
-const CHOICE_COLUMNS_BY_CARD: Record<'basic' | 'geographic' | 'legal' | 'contract' | 'system', string[]> = {
+const CHOICE_COLUMNS_BY_CARD: Record<'basic' | 'geographic' | 'legal' | 'contract' | 'system' | 'managementFees' | 'billingInformation' | 'boardInformation', string[]> = {
   basic: ['ClientType', 'ServiceType', 'ManagementType', 'DevelopmentStage', 'CommunityStatus'],
   geographic: [],
   legal: ['AcquisitionType'],
   contract: [],
-  system: []
+  system: [],
+  managementFees: ['FeeType'],
+  billingInformation: ['BillingFrequency', 'NoticeRequirement'],
+  boardInformation: []
 };
 
 const InfoCard: React.FC<InfoCardProps> = ({ title, icon, children, highlightClass = '', onEdit }) => (
@@ -99,17 +103,43 @@ const formatDate = (value: string | null | undefined) => {
     : date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 };
 
+const getMonthName = (month: number): string => {
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return months[month - 1] || 'Invalid Month';
+};
+
+const getMonthOptions = (): { value: string; label: string }[] => {
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return months.map((month, index) => ({
+    value: String(index + 1),
+    label: month
+  }));
+};
+
+const getDayOptions = (): { value: string; label: string }[] => {
+  return Array.from({ length: 31 }, (_, i) => ({
+    value: String(i + 1),
+    label: String(i + 1)
+  }));
+};
+
 const formatChipValue = (text: string | null | undefined) => text ?? 'Unknown';
 
 const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpdate }) => {
   const statusValue = community.communityStatus ?? (community.active ? 'Active' : 'Inactive');
   const clientTypeValue = community.clientType ?? 'Unknown';
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingCard, setEditingCard] = useState<'basic' | 'geographic' | 'legal' | 'contract' | 'system' | null>(null);
+  const [editingCard, setEditingCard] = useState<'basic' | 'geographic' | 'legal' | 'contract' | 'system' | 'managementFees' | 'billingInformation' | 'boardInformation' | null>(null);
   const [modalInitialData, setModalInitialData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [choiceOptions, setChoiceOptions] = useState<Record<string, ChoiceOption[]>>({});
   const [isChoiceLoading, setIsChoiceLoading] = useState(false);
+  const [managementFee, setManagementFee] = useState<ManagementFee | null>(null);
+  const [isLoadingFee, setIsLoadingFee] = useState(false);
+  const [billingInformation, setBillingInformation] = useState<BillingInformation | null>(null);
+  const [isLoadingBilling, setIsLoadingBilling] = useState(false);
+  const [boardInformation, setBoardInformation] = useState<BoardInformation | null>(null);
+  const [isLoadingBoard, setIsLoadingBoard] = useState(false);
   const activeChoiceColumns = editingCard ? CHOICE_COLUMNS_BY_CARD[editingCard] ?? [] : [];
   const searchableData = useMemo(() => {
     const addField = (
@@ -176,14 +206,37 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
     addField(systemLabels, 'Last Modified On', formatDate(community.modifiedOn));
     addField(systemLabels, 'Last Modified By', community.modifiedByName || community.modifiedBy || 'Not available');
 
+    const managementFeeLabels: string[] = [];
+    if (managementFee) {
+      addField(managementFeeLabels, 'Management Fee', managementFee.managementFee ? `$${managementFee.managementFee.toFixed(2)}` : null);
+      addField(managementFeeLabels, 'Per Unit Fee', managementFee.perUnitFee ? `$${managementFee.perUnitFee.toFixed(2)}` : null);
+      addField(managementFeeLabels, 'Fee Type', managementFee.feeType);
+      addField(managementFeeLabels, 'Increase Type', managementFee.increaseType);
+      addField(managementFeeLabels, 'Increase Effective', formatDate(managementFee.increaseEffective));
+      addField(managementFeeLabels, 'Board Approval Required', managementFee.boardApprovalRequired ? 'Yes' : 'No');
+      addField(managementFeeLabels, 'Auto Increase', managementFee.autoIncrease);
+      addField(managementFeeLabels, 'Fixed Cost', managementFee.fixedCost ? `$${managementFee.fixedCost.toFixed(2)}` : null);
+    }
+
+    const boardLabels: string[] = [];
+    if (boardInformation) {
+      addField(boardLabels, 'Annual Meeting Frequency', boardInformation.annualMeetingFrequency);
+      addField(boardLabels, 'Regular Meeting Frequency', boardInformation.regularMeetingFrequency);
+      addField(boardLabels, 'Board Members Required', boardInformation.boardMembersRequired?.toString());
+      addField(boardLabels, 'Quorum', boardInformation.quorum?.toString());
+      addField(boardLabels, 'Term Limits', boardInformation.termLimits);
+    }
+
     return [
       { id: 'basic', labels: basicLabels },
       { id: 'geographic', labels: geographicLabels },
       { id: 'legal', labels: legalLabels },
       { id: 'contracts', labels: contractLabels },
-      { id: 'system', labels: systemLabels }
+      { id: 'system', labels: systemLabels },
+      { id: 'managementFees', labels: managementFeeLabels },
+      { id: 'boardInformation', labels: boardLabels }
     ];
-  }, [community, statusValue, clientTypeValue]);
+  }, [community, statusValue, clientTypeValue, managementFee, boardInformation]);
 
   const { searchTerm, searchResults, isSearching, search, clearSearch, getCardHighlightClass } = useCommunitySearch({
     data: searchableData.map((entry) => ({
@@ -214,7 +267,10 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
       'ManagementType': 'management-types',
       'DevelopmentStage': 'development-stages',
       'AcquisitionType': 'acquisition-types',
-      'CommunityStatus': 'status' // Assuming CommunityStatus maps to the status group
+      'CommunityStatus': 'status',
+      'FeeType': 'fee-types',
+      'BillingFrequency': 'billing-frequency',
+      'NoticeRequirement': 'notice-requirements'
     };
 
     // Get GroupIDs for missing columns
@@ -253,7 +309,7 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
       })
       .catch((error) => {
         if (!isCancelled) {
-          console.error('Failed to load dynamic drop choices', error);
+          logger.error('Failed to load dynamic drop choices', 'CommunityInfo', undefined, error as Error);
         }
       })
       .finally(() => {
@@ -285,7 +341,7 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
     return hasOptions(column) ? `Select ${label}` : `No ${label} choices configured`;
   };
 
-  const getFieldConfig = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system'): FieldConfig[] => {
+  const getFieldConfig = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system' | 'managementFees' | 'billingInformation' | 'boardInformation'): FieldConfig[] => {
     if (card === 'basic') {
       return [
       {
@@ -488,10 +544,135 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
       ];
     }
 
+    if (card === 'managementFees') {
+      return [
+        {
+          key: 'ManagementFee',
+          label: 'Management Fee',
+          type: 'number',
+          placeholder: 'Enter management fee amount'
+        },
+        {
+          key: 'PerUnitFee',
+          label: 'Per Unit Fee',
+          type: 'number',
+          placeholder: 'Enter per unit fee amount'
+        },
+        {
+          key: 'FeeType',
+          label: 'Fee Type',
+          type: 'select',
+          options: buildOptions('FeeType'),
+          placeholder: getPlaceholderText('FeeType', 'Fee Type')
+        },
+        {
+          key: 'IncreaseType',
+          label: 'Increase Type',
+          type: 'text',
+          placeholder: 'Enter increase type (e.g., Annual, Biannual)'
+        },
+        {
+          key: 'IncreaseEffective',
+          label: 'Increase Effective Date',
+          type: 'date'
+        },
+        {
+          key: 'BoardApprovalRequired',
+          label: 'Board Approval Required',
+          type: 'boolean'
+        },
+        {
+          key: 'AutoIncrease',
+          label: 'Auto Increase',
+          type: 'text',
+          placeholder: 'Enter auto increase type'
+        },
+        {
+          key: 'FixedCost',
+          label: 'Fixed Cost',
+          type: 'number',
+          placeholder: 'Enter fixed cost amount'
+        }
+      ];
+    }
+
+    if (card === 'billingInformation') {
+      return [
+        {
+          key: 'BillingFrequency',
+          label: 'Billing Frequency',
+          type: 'select',
+          options: buildOptions('BillingFrequency'),
+          placeholder: getPlaceholderText('BillingFrequency', 'Billing Frequency')
+        },
+        {
+          key: 'BillingMonth',
+          label: 'Billing Month',
+          type: 'select',
+          options: getMonthOptions(),
+          placeholder: 'Select month'
+        },
+        {
+          key: 'BillingDay',
+          label: 'Billing Day',
+          type: 'select',
+          options: getDayOptions(),
+          placeholder: 'Select day'
+        },
+        {
+          key: 'NoticeRequirement',
+          label: 'Notice Requirement',
+          type: 'select',
+          options: buildOptions('NoticeRequirement'),
+          placeholder: getPlaceholderText('NoticeRequirement', 'Notice Requirement')
+        },
+        {
+          key: 'Coupon',
+          label: 'Coupon',
+          type: 'boolean'
+        }
+      ];
+    }
+
+    if (card === 'boardInformation') {
+      return [
+        {
+          key: 'AnnualMeetingFrequency',
+          label: 'Annual Meeting Frequency',
+          type: 'text',
+          placeholder: 'Enter annual meeting frequency'
+        },
+        {
+          key: 'RegularMeetingFrequency',
+          label: 'Regular Meeting Frequency',
+          type: 'text',
+          placeholder: 'Enter regular meeting frequency'
+        },
+        {
+          key: 'BoardMembersRequired',
+          label: 'Board Members Required',
+          type: 'number',
+          placeholder: 'Enter number of board members required'
+        },
+        {
+          key: 'Quorum',
+          label: 'Quorum',
+          type: 'number',
+          placeholder: 'Enter quorum requirement'
+        },
+        {
+          key: 'TermLimits',
+          label: 'Term Limits',
+          type: 'text',
+          placeholder: 'Enter term limits'
+        }
+      ];
+    }
+
     return [];
   };
 
-  const getInitialData = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system'): Record<string, any> => {
+  const getInitialData = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system' | 'managementFees' | 'billingInformation' | 'boardInformation'): Record<string, any> => {
     if (card === 'basic') {
       return {
         PropertyCode: community.propertyCode ?? '',
@@ -545,10 +726,131 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
       };
     }
 
+    if (card === 'managementFees') {
+      if (!managementFee) {
+        return {
+          ManagementFee: '',
+          PerUnitFee: '',
+          FeeType: '',
+          IncreaseType: '',
+          IncreaseEffective: '',
+          BoardApprovalRequired: false,
+          AutoIncrease: '',
+          FixedCost: ''
+        };
+      }
+      return {
+        ManagementFee: managementFee.managementFee ?? '',
+        PerUnitFee: managementFee.perUnitFee ?? '',
+        FeeType: managementFee.feeType ?? '',
+        IncreaseType: managementFee.increaseType ?? '',
+        IncreaseEffective: managementFee.increaseEffective ?? '',
+        BoardApprovalRequired: managementFee.boardApprovalRequired ?? false,
+        AutoIncrease: managementFee.autoIncrease ?? '',
+        FixedCost: managementFee.fixedCost ?? ''
+      };
+    }
+
+    if (card === 'billingInformation') {
+      if (!billingInformation) {
+        return {
+          BillingFrequency: '',
+          BillingMonth: '',
+          BillingDay: '',
+          NoticeRequirement: '',
+          Coupon: false
+        };
+      }
+      return {
+        BillingFrequency: billingInformation.billingFrequency ?? '',
+        BillingMonth: billingInformation.billingMonth ? String(billingInformation.billingMonth) : '',
+        BillingDay: billingInformation.billingDay ? String(billingInformation.billingDay) : '',
+        NoticeRequirement: billingInformation.noticeRequirement ?? '',
+        Coupon: billingInformation.coupon ?? false
+      };
+    }
+
+    if (card === 'boardInformation') {
+      if (!boardInformation) {
+        return {
+          AnnualMeetingFrequency: '',
+          RegularMeetingFrequency: '',
+          BoardMembersRequired: '',
+          Quorum: '',
+          TermLimits: ''
+        };
+      }
+      return {
+        AnnualMeetingFrequency: boardInformation.annualMeetingFrequency ?? '',
+        RegularMeetingFrequency: boardInformation.regularMeetingFrequency ?? '',
+        BoardMembersRequired: boardInformation.boardMembersRequired ?? '',
+        Quorum: boardInformation.quorum ?? '',
+        TermLimits: boardInformation.termLimits ?? ''
+      };
+    }
+
     return {};
   };
 
-  const openEditModal = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system') => {
+  // Load management fee when community changes
+  useEffect(() => {
+    const loadManagementFee = async () => {
+      setIsLoadingFee(true);
+      try {
+        const fee = await dataService.getManagementFeeByCommunity(community.id);
+        setManagementFee(fee);
+      } catch (error) {
+        logger.error('Failed to load management fee', 'CommunityInfo', undefined, error as Error);
+        setManagementFee(null);
+      } finally {
+        setIsLoadingFee(false);
+      }
+    };
+
+    if (community.id) {
+      loadManagementFee();
+    }
+  }, [community.id]);
+
+  // Load billing information when community changes
+  useEffect(() => {
+    const loadBillingInformation = async () => {
+      setIsLoadingBilling(true);
+      try {
+        logger.debug('Loading billing information for community', 'CommunityInfo', { communityId: community.id });
+        const billing = await dataService.getBillingInformationByCommunity(community.id);
+        logger.debug('Billing information loaded', 'CommunityInfo', { billing, communityId: community.id });
+        setBillingInformation(billing);
+      } catch (error) {
+        logger.error('Error loading billing information', 'CommunityInfo', { communityId: community.id }, error as Error);
+        setBillingInformation(null);
+      } finally {
+        setIsLoadingBilling(false);
+      }
+    };
+
+    const loadBoardInformation = async () => {
+      setIsLoadingBoard(true);
+      try {
+        logger.debug('Loading board information for community', 'CommunityInfo', { communityId: community.id });
+        const board = await dataService.getBoardInformationByCommunity(community.id);
+        logger.debug('Board information loaded', 'CommunityInfo', { board, communityId: community.id });
+        setBoardInformation(board);
+      } catch (error) {
+        logger.error('Error loading board information', 'CommunityInfo', { communityId: community.id }, error as Error);
+        setBoardInformation(null);
+      } finally {
+        setIsLoadingBoard(false);
+      }
+    };
+
+    if (community.id) {
+      loadBillingInformation();
+      loadBoardInformation();
+    }
+  }, [community.id]);
+
+  const openEditModal = (card: 'basic' | 'geographic' | 'legal' | 'contract' | 'system' | 'managementFees' | 'billingInformation' | 'boardInformation') => {
     setEditingCard(card);
     setModalInitialData(getInitialData(card));
     setIsEditModalOpen(true);
@@ -636,6 +938,93 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
         };
 
         updatedCommunity = await dataService.updateCommunity(community.id, payload);
+      } else if (editingCard === 'managementFees') {
+        if (managementFee) {
+          // Update existing
+          const payload: UpdateManagementFeeData = {
+            ManagementFee: toNumberOrNull(formValues.ManagementFee),
+            PerUnitFee: toNumberOrNull(formValues.PerUnitFee),
+            FeeType: normalizeString(formValues.FeeType),
+            IncreaseType: normalizeString(formValues.IncreaseType),
+            IncreaseEffective: formValues.IncreaseEffective || null,
+            BoardApprovalRequired: Boolean(formValues.BoardApprovalRequired),
+            AutoIncrease: normalizeString(formValues.AutoIncrease),
+            FixedCost: toNumberOrNull(formValues.FixedCost)
+          };
+
+          const updatedFee = await dataService.updateManagementFee(managementFee.id, payload);
+          setManagementFee(updatedFee);
+        } else {
+          // Create new
+          const payload: CreateManagementFeeData = {
+            CommunityID: community.id,
+            ManagementFee: toNumberOrNull(formValues.ManagementFee),
+            PerUnitFee: toNumberOrNull(formValues.PerUnitFee),
+            FeeType: normalizeString(formValues.FeeType),
+            IncreaseType: normalizeString(formValues.IncreaseType),
+            IncreaseEffective: formValues.IncreaseEffective || null,
+            BoardApprovalRequired: Boolean(formValues.BoardApprovalRequired),
+            AutoIncrease: normalizeString(formValues.AutoIncrease),
+            FixedCost: toNumberOrNull(formValues.FixedCost)
+          };
+
+          const newFee = await dataService.createManagementFee(payload);
+          setManagementFee(newFee);
+        }
+      } else if (editingCard === 'billingInformation') {
+        if (billingInformation) {
+          // Update existing
+          const payload: UpdateBillingInformationData = {
+            BillingFrequency: normalizeString(formValues.BillingFrequency),
+            BillingMonth: toNumberOrNull(formValues.BillingMonth),
+            BillingDay: toNumberOrNull(formValues.BillingDay),
+            NoticeRequirement: normalizeString(formValues.NoticeRequirement),
+            Coupon: Boolean(formValues.Coupon)
+          };
+
+          const updatedBilling = await dataService.updateBillingInformation(billingInformation.id, payload);
+          setBillingInformation(updatedBilling);
+        } else {
+          // Create new
+          const payload: CreateBillingInformationData = {
+            CommunityID: community.id,
+            BillingFrequency: normalizeString(formValues.BillingFrequency),
+            BillingMonth: toNumberOrNull(formValues.BillingMonth),
+            BillingDay: toNumberOrNull(formValues.BillingDay),
+            NoticeRequirement: normalizeString(formValues.NoticeRequirement),
+            Coupon: Boolean(formValues.Coupon)
+          };
+
+          const newBilling = await dataService.createBillingInformation(payload);
+          setBillingInformation(newBilling);
+        }
+      } else if (editingCard === 'boardInformation') {
+        if (boardInformation) {
+          // Update existing
+          const payload: UpdateBoardInformationData = {
+            AnnualMeetingFrequency: normalizeString(formValues.AnnualMeetingFrequency),
+            RegularMeetingFrequency: normalizeString(formValues.RegularMeetingFrequency),
+            BoardMembersRequired: toNumberOrNull(formValues.BoardMembersRequired),
+            Quorum: toNumberOrNull(formValues.Quorum),
+            TermLimits: normalizeString(formValues.TermLimits)
+          };
+
+          const updatedBoard = await dataService.updateBoardInformation(boardInformation.id, payload);
+          setBoardInformation(updatedBoard);
+        } else {
+          // Create new
+          const payload: CreateBoardInformationData = {
+            CommunityID: community.id,
+            AnnualMeetingFrequency: normalizeString(formValues.AnnualMeetingFrequency),
+            RegularMeetingFrequency: normalizeString(formValues.RegularMeetingFrequency),
+            BoardMembersRequired: toNumberOrNull(formValues.BoardMembersRequired),
+            Quorum: toNumberOrNull(formValues.Quorum),
+            TermLimits: normalizeString(formValues.TermLimits)
+          };
+
+          const newBoard = await dataService.createBoardInformation(payload);
+          setBoardInformation(newBoard);
+        }
       }
 
       if (updatedCommunity) {
@@ -659,7 +1048,11 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
             ? 'Contract Information'
           : editingCard === 'system'
             ? 'System Information'
-            : '';
+            : editingCard === 'managementFees'
+              ? 'Management Fees'
+              : editingCard === 'billingInformation'
+                ? 'Billing Information'
+                : '';
 
   return (
     <div className="space-y-6">
@@ -784,6 +1177,68 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
           <p className="text-sm text-secondary">
             Management team details will be reintroduced after the backend migration. For now this section is read-only.
           </p>
+        </InfoCard>
+
+        <InfoCard
+          title="Management Fees"
+          icon={<CurrencyDollarIcon className="w-6 h-6" />}
+          highlightClass={getCardHighlightClass('managementFees')}
+          onEdit={() => openEditModal('managementFees')}
+        >
+          {isLoadingFee ? (
+            <p className="text-sm text-secondary">Loading management fee information...</p>
+          ) : managementFee ? (
+            <>
+              <InfoRow label="Management Fee" value={managementFee.managementFee !== null && managementFee.managementFee !== undefined ? `$${managementFee.managementFee.toFixed(2)}` : 'N/A'} />
+              <InfoRow label="Per Unit Fee" value={managementFee.perUnitFee !== null && managementFee.perUnitFee !== undefined ? `$${managementFee.perUnitFee.toFixed(2)}` : 'N/A'} />
+              <InfoRow label="Fee Type" value={managementFee.feeType || 'N/A'} chip chipColor="blue" />
+              <InfoRow label="Increase Type" value={managementFee.increaseType || 'N/A'} />
+              <InfoRow label="Increase Effective" value={managementFee.increaseEffective ? formatDate(managementFee.increaseEffective) : 'N/A'} />
+              <InfoRow label="Board Approval Required" value={managementFee.boardApprovalRequired ? 'Yes' : 'No'} />
+              <InfoRow label="Auto Increase" value={managementFee.autoIncrease || 'N/A'} />
+              <InfoRow label="Fixed Cost" value={managementFee.fixedCost !== null && managementFee.fixedCost !== undefined ? `$${managementFee.fixedCost.toFixed(2)}` : 'N/A'} />
+            </>
+          ) : (
+            <p className="text-sm text-secondary">No management fee information available.</p>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="Billing Information"
+          icon={<CreditCardIcon className="w-6 h-6" />}
+          highlightClass={getCardHighlightClass('billingInformation')}
+          onEdit={() => openEditModal('billingInformation')}
+        >
+          {isLoadingBilling ? (
+            <p className="text-sm text-secondary">Loading billing information...</p>
+          ) : (
+            <>
+              <InfoRow label="Billing Frequency" value={billingInformation?.billingFrequency || 'N/A'} chip chipColor="blue" />
+              <InfoRow label="Billing Month" value={billingInformation?.billingMonth ? getMonthName(billingInformation.billingMonth) : 'N/A'} />
+              <InfoRow label="Billing Day" value={billingInformation?.billingDay || 'N/A'} />
+              <InfoRow label="Notice Requirement" value={billingInformation?.noticeRequirement || 'N/A'} chip chipColor="green" />
+              <InfoRow label="Coupon" value={billingInformation?.coupon ? 'Yes' : 'No'} />
+            </>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="Board Information"
+          icon={<UsersIcon className="w-6 h-6" />}
+          highlightClass={getCardHighlightClass('boardInformation')}
+          onEdit={() => openEditModal('boardInformation')}
+        >
+          {isLoadingBoard ? (
+            <p className="text-sm text-secondary">Loading board information...</p>
+          ) : (
+            <>
+              <InfoRow label="Annual Meeting Frequency" value={boardInformation?.annualMeetingFrequency || 'N/A'} />
+              <InfoRow label="Regular Meeting Frequency" value={boardInformation?.regularMeetingFrequency || 'N/A'} />
+              <InfoRow label="Board Members Required" value={boardInformation?.boardMembersRequired || 'N/A'} />
+              <InfoRow label="Quorum" value={boardInformation?.quorum || 'N/A'} />
+              <InfoRow label="Term Limits" value={boardInformation?.termLimits || 'N/A'} />
+            </>
+          )}
         </InfoCard>
       </section>
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import CommunityAssignmentForm from './CommunityAssignmentForm';
 import CreateCommunityForm from './CreateCommunityForm/CreateCommunityForm';
+import logger from '../../services/logger';
 
 interface Community {
   id: number;
@@ -41,7 +42,7 @@ const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, sele
       if (onFormNavigation) {
         onFormNavigation(category, form);
       }
-      console.log(`Clicked ${category} > ${form}`);
+      logger.debug(`Form navigation: ${category} > ${form}`, 'Forms');
     }
   };
 
@@ -72,8 +73,8 @@ const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, sele
           selectedCommunity={selectedCommunity}
           onCancel={handleBackToForms}
           onSuccess={(assignment) => {
-            console.log('Assignment submitted:', assignment);
-            // TODO: Handle success (maybe show success message and go back to forms)
+            logger.debug('Assignment submitted', 'Forms', { assignment });
+            // Success is handled by going back to forms
             handleBackToForms();
           }}
         />
@@ -87,7 +88,7 @@ const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, sele
         <CreateCommunityForm
           onCancel={handleBackToForms}
           onSuccess={(community) => {
-            console.log('Community created:', community);
+            logger.debug('Community created', 'Forms', { communityId: community.id });
             handleBackToForms();
           }}
         />

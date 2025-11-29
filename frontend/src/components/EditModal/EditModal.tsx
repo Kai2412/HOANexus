@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { PlacesAutocomplete } from '../PlacesAutocomplete';
+import logger from '../../services/logger';
 
 // Helper function to parse Google Places API (New) address components
 const parseAddressComponents = (components: any[]) => {
@@ -41,7 +42,7 @@ const parseAddressComponents = (components: any[]) => {
 export interface FieldConfig {
   key: string;
   label: string;
-  type: 'text' | 'date' | 'select' | 'select-with-input' | 'number' | 'boolean' | 'textarea' | 'places-autocomplete';
+  type: 'text' | 'date' | 'select' | 'select-with-input' | 'number' | 'boolean' | 'textarea' | 'places-autocomplete' | 'day';
   required?: boolean;
   options?: { value: string; label: string }[]; // For select fields
   placeholder?: string;
@@ -186,6 +187,38 @@ const FieldRenderer: React.FC<{
             } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
           />
         );
+
+      case 'day': {
+        // Convert day number (1-31) to a date string for the date picker
+        // Use a fixed year/month (2024-01) so only the day matters
+        const dayNumber = value ? Number(value) : null;
+        const dateValue = dayNumber && dayNumber >= 1 && dayNumber <= 31 
+          ? `2024-01-${String(dayNumber).padStart(2, '0')}` 
+          : '';
+        
+        const handleDayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+          const dateStr = e.target.value;
+          if (dateStr) {
+            // Extract just the day from the date string
+            const date = new Date(dateStr);
+            const day = date.getDate();
+            onChange({ target: { value: String(day) } } as React.ChangeEvent<HTMLInputElement>);
+          } else {
+            onChange({ target: { value: '' } } as React.ChangeEvent<HTMLInputElement>);
+          }
+        };
+
+        return (
+          <input
+            type="date"
+            value={dateValue}
+            onChange={handleDayChange}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
+          />
+        );
+      }
 
       case 'places-autocomplete': {
         const pendingForField =
@@ -433,7 +466,7 @@ const EditModal: React.FC<EditModalProps> = ({
       await onSave(formData);
       onClose();
     } catch (error) {
-      console.error('Save failed:', error);
+      logger.error('Save failed', 'EditModal', undefined, error as Error);
       // Error handling will be done by the parent component
     }
   };

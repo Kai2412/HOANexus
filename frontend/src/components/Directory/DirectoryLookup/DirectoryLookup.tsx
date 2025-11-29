@@ -18,6 +18,7 @@ import type { Stakeholder } from '../../../types/stakeholder';
 import { STAKEHOLDER_TYPES, STAKEHOLDER_STATUSES } from '../../../types/stakeholder';
 import { stakeholderService } from '../../../services/stakeholderService';
 import ConfirmationModal from '../../Modal/ConfirmationModal';
+import logger from '../../../services/logger';
 import ViewStakeholderModal from '../ViewStakeholderModal';
 import EditStakeholderModal from '../EditStakeholderModal';
 
@@ -80,7 +81,7 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
       setShowDeleteConfirmation(false);
       setStakeholderToDelete(null);
     } catch (error) {
-      console.error('Error deleting stakeholder:', error);
+      logger.error('Error deleting stakeholder', 'DirectoryLookup', { stakeholderId: id }, error as Error);
     } finally {
       setDeleteLoading(false);
     }
@@ -131,7 +132,7 @@ const DirectoryLookup: React.FC<DirectoryLookupProps> = ({
       setCopiedField(fieldName);
       setTimeout(() => setCopiedField(null), 2000);
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      logger.warn('Failed to copy to clipboard', 'DirectoryLookup', { field: fieldName }, err as Error);
     }
   };
 

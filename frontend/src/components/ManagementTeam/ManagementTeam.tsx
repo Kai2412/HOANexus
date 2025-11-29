@@ -10,6 +10,7 @@ import {
 import type { Community } from '../../types';
 import { ManagementTeamService } from '../../services';
 import type { ManagementTeamMember } from '../../services/managementTeamService';
+import logger from '../../services/logger';
 
 interface ManagementTeamProps {
   community: Community;
@@ -30,7 +31,7 @@ const ManagementTeam: React.FC<ManagementTeamProps> = ({ community, onRequestAss
       const teamData = await ManagementTeamService.getManagementTeam(community.id);
       setTeamMembers(teamData);
     } catch (err) {
-      console.error('Error loading management team:', err);
+      logger.error('Error loading management team', 'ManagementTeam', { communityId: community.id }, err as Error);
       setError('Failed to load management team');
       setTeamMembers([]);
     } finally {
@@ -48,7 +49,7 @@ const ManagementTeam: React.FC<ManagementTeamProps> = ({ community, onRequestAss
       setCopiedField(fieldName);
       setTimeout(() => setCopiedField(null), 2000);
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      logger.warn('Failed to copy to clipboard', 'ManagementTeam', { field: fieldName }, err as Error);
     }
   };
 
