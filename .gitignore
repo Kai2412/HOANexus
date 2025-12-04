@@ -100,6 +100,18 @@ temp/
 *.sqlite
 *.sqlite3
 
+# Assets (logos, uploaded files)
+backend/assets/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+
+# AI/Vector database files (if local)
+backend/vector-db/
+backend/ai-embeddings/
+
 # Deployment
 .vercel
 .netlify

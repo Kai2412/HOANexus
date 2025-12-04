@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BuildingOfficeIcon, DocumentTextIcon, ClockIcon, CogIcon, PencilIcon, UserGroupIcon, CurrencyDollarIcon, CreditCardIcon, UsersIcon } from '@heroicons/react/24/outline';
 import type { Community, UpdateCommunityData, ManagementFee, CreateManagementFeeData, UpdateManagementFeeData, BillingInformation, CreateBillingInformationData, UpdateBillingInformationData, BoardInformation, CreateBoardInformationData, UpdateBoardInformationData } from '../../types';
 import { getCommunityStatusColor, getCommunityStatusColorName, getCommunityTypeColor, getCommunityTypeColorName } from '../../utils/statusColors';
-import { CommunitySearchBar, SearchResultsIndicator } from '../CommunitySearchBar';
-import { useCommunitySearch } from '../../hooks/useCommunitySearch';
+import { SearchResultsIndicator } from '../CommunitySearchBar';
+import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import EditModal from '../EditModal';
 import type { FieldConfig } from '../EditModal';
 import dataService from '../../services/dataService';
 import logger from '../../services/logger';
+import InfoViewTemplate from '../InfoViewTemplate';
 
 interface CommunityInfoProps {
   community: Community;
@@ -218,6 +219,15 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
       addField(managementFeeLabels, 'Fixed Cost', managementFee.fixedCost ? `$${managementFee.fixedCost.toFixed(2)}` : null);
     }
 
+    const billingLabels: string[] = [];
+    if (billingInformation) {
+      addField(billingLabels, 'Billing Frequency', billingInformation.billingFrequency);
+      addField(billingLabels, 'Billing Month', billingInformation.billingMonth ? getMonthName(billingInformation.billingMonth) : null);
+      addField(billingLabels, 'Billing Day', billingInformation.billingDay?.toString());
+      addField(billingLabels, 'Notice Requirement', billingInformation.noticeRequirement);
+      addField(billingLabels, 'Coupon', billingInformation.coupon ? 'Yes' : 'No');
+    }
+
     const boardLabels: string[] = [];
     if (boardInformation) {
       addField(boardLabels, 'Annual Meeting Frequency', boardInformation.annualMeetingFrequency);
@@ -234,16 +244,54 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
       { id: 'contracts', labels: contractLabels },
       { id: 'system', labels: systemLabels },
       { id: 'managementFees', labels: managementFeeLabels },
+      { id: 'billingInformation', labels: billingLabels },
       { id: 'boardInformation', labels: boardLabels }
     ];
-  }, [community, statusValue, clientTypeValue, managementFee, boardInformation]);
+  }, [community, statusValue, clientTypeValue, managementFee, billingInformation, boardInformation]);
 
-  const { searchTerm, searchResults, isSearching, search, clearSearch, getCardHighlightClass } = useCommunitySearch({
-    data: searchableData.map((entry) => ({
-      ...entry,
-      labels: entry.labels.map((label: string) => label.toString())
-    }))
-  });
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Card titles mapping
+  const cardTitles: Record<string, string> = {
+    'basic': 'Basic Information',
+    'geographic': 'Geographic Information',
+    'legal': 'Legal & Finance',
+    'contracts': 'Contract Information',
+    'system': 'System Information',
+    'managementFees': 'Management Fees',
+    'billingInformation': 'Billing Information',
+    'boardInformation': 'Board Information'
+  };
+
+  // Filter cards based on search term
+  const shouldShowCard = useMemo(() => {
+    const searchLower = searchTerm.toLowerCase().trim();
+    if (!searchLower) {
+      return () => true; // Show all cards when no search
+    }
+
+    // Create a map of card IDs to their searchable text
+    const cardSearchText: Record<string, string> = {};
+    searchableData.forEach((entry) => {
+      const cardTitle = cardTitles[entry.id] || '';
+      const allText = [cardTitle, ...entry.labels.map((l: string) => l.toString())]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      cardSearchText[entry.id] = allText;
+    });
+
+    return (cardId: string) => {
+      const searchableText = cardSearchText[cardId] || '';
+      return searchableText.includes(searchLower);
+    };
+  }, [searchTerm, searchableData]);
+
+  const hasSearchResults = searchTerm.trim().length > 0;
+  const visibleCardsCount = useMemo(() => {
+    if (!hasSearchResults) return Object.keys(cardTitles).length;
+    return Object.keys(cardTitles).filter(id => shouldShowCard(id)).length;
+  }, [hasSearchResults, shouldShowCard]);
 
   useEffect(() => {
     if (!isEditModalOpen || !editingCard) {
@@ -1054,47 +1102,86 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
                 ? 'Billing Information'
                 : '';
 
-  return (
-    <div className="space-y-6">
-      <header className="space-y-4">
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-primary mb-2">{community.displayName ?? community.legalName ?? 'Unnamed Community'}</h1>
-            <div className="flex flex-wrap gap-3">
-              {community.propertyCode && (
-                <span className="px-3 py-1 bg-royal-600 dark:bg-royal-500 text-white rounded-full text-sm font-medium theme-transition">
-                  {community.propertyCode}
-                </span>
-              )}
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium theme-transition ${getCommunityStatusColor(statusValue)}`}
-              >
-                {formatChipValue(statusValue)}
+  // Build header content
+  const headerContent = (
+    <>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-primary mb-2">{community.displayName ?? community.legalName ?? 'Unnamed Community'}</h1>
+          <div className="flex flex-wrap gap-3">
+            {community.propertyCode && (
+              <span className="px-3 py-1 bg-royal-600 dark:bg-royal-500 text-white rounded-full text-sm font-medium theme-transition">
+                {community.propertyCode}
               </span>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium border theme-transition ${getCommunityTypeColor(clientTypeValue)}`}
-              >
-                {formatChipValue(clientTypeValue)}
-              </span>
-            </div>
-          </div>
-          <div className="w-full md:w-80">
-            <CommunitySearchBar
-              onSearch={search}
-              onClear={clearSearch}
-              placeholder="Search by code, name, address, status..."
-              className="w-full"
-            />
+            )}
+            <span
+              className={`px-3 py-1 rounded-full text-sm font-medium theme-transition ${getCommunityStatusColor(statusValue)}`}
+            >
+              {formatChipValue(statusValue)}
+            </span>
+            <span
+              className={`px-3 py-1 rounded-full text-sm font-medium border theme-transition ${getCommunityTypeColor(clientTypeValue)}`}
+            >
+              {formatChipValue(clientTypeValue)}
+            </span>
           </div>
         </div>
-        <SearchResultsIndicator searchTerm={searchTerm} resultCount={searchResults.length} onClear={clearSearch} />
-      </header>
+        <div className="w-full md:w-80">
+          <div className="relative">
+            {/* Search Icon */}
+            <div className="absolute left-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <MagnifyingGlassIcon className="w-5 h-5 text-tertiary" />
+            </div>
 
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Search Input */}
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchTerm('');
+                }
+              }}
+              placeholder="Search by code, name, address, status..."
+              className="w-full pl-12 pr-12 py-3 border border-primary rounded-lg bg-surface text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-royal-600 focus:border-royal-600 transition-all"
+              autoComplete="off"
+            />
+
+            {/* Clear Button */}
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-tertiary hover:text-primary transition-colors"
+                aria-label="Clear search"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {hasSearchResults && (
+        <SearchResultsIndicator 
+          searchTerm={searchTerm} 
+          resultCount={visibleCardsCount} 
+          onClear={() => setSearchTerm('')} 
+        />
+      )}
+    </>
+  );
+
+  return (
+    <InfoViewTemplate
+      header={headerContent}
+      hasSearchResults={!!searchTerm}
+      maxHeightOffset={300}
+    >
+      <div className="cards-grid">
+        {shouldShowCard('basic') && (
         <InfoCard
           title="Basic Information"
           icon={<BuildingOfficeIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('basic')}
           onEdit={() => openEditModal('basic')}
         >
           <InfoRow label="Community Code" value={community.propertyCode} />
@@ -1121,11 +1208,12 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
           <InfoRow label="Preferred Contact Info" value={community.preferredContactInfo} />
           <InfoRow label="Website" value={community.website} />
         </InfoCard>
+        )}
 
+        {shouldShowCard('geographic') && (
         <InfoCard
           title="Geographic Information"
           icon={<BuildingOfficeIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('geographic')}
           onEdit={() => openEditModal('geographic')}
         >
           <InfoRow label="Address Line 1" value={community.addressLine1} />
@@ -1134,11 +1222,12 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
           <InfoRow label="State" value={community.state} />
           <InfoRow label="Postal Code" value={community.postalCode} />
         </InfoCard>
+        )}
 
+        {shouldShowCard('legal') && (
         <InfoCard
           title="Legal & Finance"
           icon={<DocumentTextIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('legal')}
           onEdit={() => openEditModal('legal')}
         >
           <InfoRow label="Tax ID" value={community.taxId} />
@@ -1147,21 +1236,23 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
           <InfoRow label="Tax Return Type" value={community.taxReturnType} />
           <InfoRow label="Acquisition Type" value={community.acquisitionType} />
         </InfoCard>
+        )}
 
+        {shouldShowCard('contracts') && (
         <InfoCard
           title="Contract Information"
           icon={<ClockIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('contracts')}
           onEdit={() => openEditModal('contract')}
         >
           <InfoRow label="Contract Start" value={formatDate(community.contractStart)} />
           <InfoRow label="Contract End" value={formatDate(community.contractEnd)} />
         </InfoCard>
+        )}
 
+        {shouldShowCard('system') && (
         <InfoCard
           title="System Information"
           icon={<CogIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('system')}
           onEdit={() => openEditModal('system')}
         >
           <InfoRow label="Active" value={community.active ? 'Yes' : 'No'} />
@@ -1172,6 +1263,7 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
           <InfoRow label="Last Modified On" value={formatDate(community.modifiedOn)} />
           <InfoRow label="Last Modified By" value={community.modifiedByName || community.modifiedBy || 'Not available'} />
         </InfoCard>
+        )}
 
         <InfoCard title="Management Team" icon={<UserGroupIcon className="w-6 h-6" />}>
           <p className="text-sm text-secondary">
@@ -1179,10 +1271,10 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
           </p>
         </InfoCard>
 
+        {shouldShowCard('managementFees') && (
         <InfoCard
           title="Management Fees"
           icon={<CurrencyDollarIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('managementFees')}
           onEdit={() => openEditModal('managementFees')}
         >
           {isLoadingFee ? (
@@ -1202,11 +1294,12 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
             <p className="text-sm text-secondary">No management fee information available.</p>
           )}
         </InfoCard>
+        )}
 
+        {shouldShowCard('billingInformation') && (
         <InfoCard
           title="Billing Information"
           icon={<CreditCardIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('billingInformation')}
           onEdit={() => openEditModal('billingInformation')}
         >
           {isLoadingBilling ? (
@@ -1221,11 +1314,12 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
             </>
           )}
         </InfoCard>
+        )}
 
+        {shouldShowCard('boardInformation') && (
         <InfoCard
           title="Board Information"
           icon={<UsersIcon className="w-6 h-6" />}
-          highlightClass={getCardHighlightClass('boardInformation')}
           onEdit={() => openEditModal('boardInformation')}
         >
           {isLoadingBoard ? (
@@ -1240,7 +1334,8 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
             </>
           )}
         </InfoCard>
-      </section>
+        )}
+      </div>
 
       <EditModal
         isOpen={isEditModalOpen}
@@ -1251,7 +1346,7 @@ const CommunityInfo: React.FC<CommunityInfoProps> = ({ community, onCommunityUpd
         onSave={handleSave}
         isLoading={isSaving}
       />
-    </div>
+    </InfoViewTemplate>
   );
 };
 

@@ -38,4 +38,9 @@
   .theme-transition {
     @apply transition-colors duration-200 ease-in-out;
   }
+  
+  /* Community Info Cards Grid - Responsive grid layout */
+  .cards-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
 }

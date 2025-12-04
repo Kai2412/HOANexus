@@ -7,6 +7,8 @@ import {
 // import dataService from '../../services/dataService'; // Temporarily disabled - using placeholder data
 import type { Community, Property } from '../../types';
 import { getPropertyStatusColor } from '../../utils/statusColors';
+import InfoViewTemplate from '../InfoViewTemplate';
+import { SearchResultsIndicator } from '../CommunitySearchBar';
 
 interface ResidentInfoProps {
   community: Community;
@@ -303,45 +305,69 @@ const ResidentInfo: React.FC<ResidentInfoProps> = ({ community }) => {
     );
   }
 
-  return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-primary mb-2">
-          Resident Information
-        </h1>
-        <p className="text-secondary">
-          Properties and residents for {community.displayName}
-        </p>
-      </div>
+  const hasSearchResults = searchTerm.trim().length > 0;
 
-      {/* Search Bar */}
-      <div className="mb-6">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <MagnifyingGlassIcon className="h-5 w-5 text-tertiary" />
+  // Build header content
+  const headerContent = (
+    <>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-primary mb-2">
+            Resident Information
+          </h1>
+          <p className="text-secondary">
+            Properties and residents for {community.displayName}
+          </p>
+        </div>
+        <div className="w-full md:w-80">
+          <div className="relative">
+            <div className="absolute left-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <MagnifyingGlassIcon className="w-5 h-5 text-tertiary" />
+            </div>
+            <input
+              type="text"
+              className="w-full pl-12 pr-12 py-3 border border-primary rounded-lg bg-surface text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-royal-600 focus:border-royal-600 transition-all"
+              placeholder="Search by unit, address, owner, or status..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchTerm('');
+                }
+              }}
+              autoComplete="off"
+            />
+            {searchTerm && (
+              <button
+                onClick={clearSearch}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-tertiary hover:text-primary transition-colors"
+                aria-label="Clear search"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            )}
           </div>
-          <input
-            type="text"
-            className="block w-full pl-10 pr-10 py-3 border border-primary rounded-lg focus:ring-royal-500 focus:border-royal-500 bg-surface text-primary placeholder-tertiary theme-transition"
-            placeholder="Search by unit, address, owner, or status..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          {searchTerm && (
-            <button
-              onClick={clearSearch}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-            >
-              <XMarkIcon className="h-5 w-5 text-tertiary hover:text-secondary theme-transition" />
-            </button>
-          )}
         </div>
       </div>
+      {hasSearchResults && (
+        <SearchResultsIndicator 
+          searchTerm={searchTerm} 
+          resultCount={filteredProperties.length} 
+          onClear={() => setSearchTerm('')} 
+        />
+      )}
+    </>
+  );
 
+  return (
+    <InfoViewTemplate
+      header={headerContent}
+      hasSearchResults={hasSearchResults}
+      maxHeightOffset={300}
+    >
       {/* Loading State */}
       {loading && (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-royal-600 mx-auto mb-4"></div>
             <p className="text-secondary">Loading properties...</p>
@@ -367,9 +393,9 @@ const ResidentInfo: React.FC<ResidentInfoProps> = ({ community }) => {
         </div>
       )}
 
-      {/* Properties Grid */}
+      {/* Properties Content */}
       {!loading && !error && (
-        <div className="flex-1">
+        <>
           {/* Stats */}
           <div className="mb-6 p-4 bg-surface-secondary rounded-lg theme-transition">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -397,31 +423,29 @@ const ResidentInfo: React.FC<ResidentInfoProps> = ({ community }) => {
           </div>
 
           {/* Properties List */}
-          <div className="overflow-y-auto">
-            {filteredProperties.length === 0 ? (
-              <div className="text-center py-12">
-                <HomeIcon className="mx-auto h-12 w-12 text-tertiary mb-4" />
-                <h3 className="text-lg font-medium text-primary mb-2">
-                  {searchTerm ? 'No properties found' : 'No properties available'}
-                </h3>
-                <p className="text-secondary">
-                  {searchTerm 
-                    ? 'Try adjusting your search criteria.' 
-                    : 'This community does not have any properties yet.'
-                  }
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProperties.map((property) => (
-                  <PropertyCard key={property.id} property={property} />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          {filteredProperties.length === 0 ? (
+            <div className="text-center py-12">
+              <HomeIcon className="mx-auto h-12 w-12 text-tertiary mb-4" />
+              <h3 className="text-lg font-medium text-primary mb-2">
+                {searchTerm ? 'No properties found' : 'No properties available'}
+              </h3>
+              <p className="text-secondary">
+                {searchTerm 
+                  ? 'Try adjusting your search criteria.' 
+                  : 'This community does not have any properties yet.'
+                }
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProperties.map((property) => (
+                <PropertyCard key={property.id} property={property} />
+              ))}
+            </div>
+          )}
+        </>
       )}
-    </div>
+    </InfoViewTemplate>
   );
 };
 

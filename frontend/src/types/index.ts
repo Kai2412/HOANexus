@@ -6,6 +6,12 @@ export * from './amenity';
 export * from './managementFee';
 export * from './billingInformation';
 export * from './boardInformation';
+export * from './feeMaster';
+export * from './communityFeeVariance';
+export * from './commitmentFees';
+export * from './folder';
+export * from './file';
+export * from './invoice';
 export * from './api';
 export * from './reference';
 

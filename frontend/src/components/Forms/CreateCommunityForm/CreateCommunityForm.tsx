@@ -224,7 +224,6 @@ const CreateCommunityForm: React.FC<CreateCommunityFormProps> = ({ onSuccess, on
   };
 
   const breadcrumbs = [
-    { label: 'Community Info', onClick: onCancel },
     { label: 'Forms', onClick: onCancel },
     { label: 'Create Community', isActive: true }
   ];

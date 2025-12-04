@@ -159,13 +159,6 @@ const Directory: React.FC<DirectoryProps> = ({ onBackToCommunity, onAddStakehold
   const renderBreadcrumbs = () => {
     return (
       <div className="flex items-center space-x-2 text-sm">
-        <button
-          onClick={() => onBackToCommunity?.()}
-          className="text-secondary hover:text-primary transition-colors"
-        >
-          Community Info
-        </button>
-        <span className="text-tertiary">&gt;</span>
         <span className="text-primary font-medium">Directory</span>
       </div>
     );

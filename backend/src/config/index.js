@@ -22,7 +22,9 @@ const config = {
     },
     rateLimit: {
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
+      max: process.env.NODE_ENV === 'development' ? 1000 : 100, // Higher limit in development
+      standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+      legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     },
   },
 
@@ -79,6 +81,41 @@ const config = {
     version: '1.0.0',
     timeout: 30000, // 30 seconds
     maxBodySize: '10mb',
+  },
+
+  // File Storage Configuration
+  fileStorage: {
+    maxFileSize: 30 * 1024 * 1024, // 30MB in bytes
+    allowedMimeTypes: [
+      // PDFs
+      'application/pdf',
+      // Images
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      // Documents
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      // Text
+      'text/plain',
+      'text/csv',
+    ],
+    // Azure Blob Storage Configuration
+    azure: {
+      connectionString: process.env.AZURE_STORAGE_CONNECTION_STRING || 
+        'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;',
+      containerName: process.env.AZURE_STORAGE_CONTAINER || 'hoa-nexus-files',
+      // Use local Azurite in development, real Azure in production
+      useAzurite: process.env.NODE_ENV !== 'production',
+    },
+    // Local filesystem fallback (if not using blob storage)
+    uploadPath: process.env.UPLOAD_PATH || './uploads',
   },
 
   // Feature Flags

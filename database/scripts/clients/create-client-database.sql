@@ -383,6 +383,139 @@ END
 GO
 
 -- =============================================
+-- Step 5e: Create Fee Master Table
+-- =============================================
+-- Master catalog of standard fees used across all communities
+
+CREATE TABLE dbo.cor_FeeMaster (
+    FeeMasterID        uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_FeeMaster PRIMARY KEY DEFAULT NEWID(),
+    FeeName             nvarchar(200) NOT NULL,
+    DefaultAmount       decimal(12,2) NOT NULL,
+    DisplayOrder        int NOT NULL DEFAULT 0,
+    IsActive            bit NOT NULL DEFAULT 1,
+    CreatedOn           datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy           uniqueidentifier NULL,
+    ModifiedOn          datetime2 NULL,
+    ModifiedBy          uniqueidentifier NULL
+);
+GO
+
+-- Index for sorting/display
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_FeeMaster_DisplayOrder' AND object_id = OBJECT_ID('dbo.cor_FeeMaster'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_cor_FeeMaster_DisplayOrder 
+        ON dbo.cor_FeeMaster(DisplayOrder, IsActive);
+END
+GO
+
+-- =============================================
+-- Step 5f: Create Community Fee Variances Table
+-- =============================================
+-- Allows communities to override master fees or mark them as not billed
+
+CREATE TABLE dbo.cor_CommunityFeeVariances (
+    CommunityFeeVarianceID  uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_CommunityFeeVariances PRIMARY KEY DEFAULT NEWID(),
+    CommunityID             uniqueidentifier NOT NULL,
+    FeeMasterID             uniqueidentifier NOT NULL,
+    VarianceType            nvarchar(50) NOT NULL,
+    CustomAmount            decimal(12,2) NULL,
+    Notes                   nvarchar(500) NULL,
+    IsActive                bit NOT NULL DEFAULT 1,
+    CreatedOn               datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy               uniqueidentifier NULL,
+    ModifiedOn              datetime2 NULL,
+    ModifiedBy               uniqueidentifier NULL,
+    
+    CONSTRAINT FK_cor_CommunityFeeVariances_Community 
+        FOREIGN KEY (CommunityID) 
+        REFERENCES dbo.cor_Communities(CommunityID),
+    CONSTRAINT FK_cor_CommunityFeeVariances_FeeMaster 
+        FOREIGN KEY (FeeMasterID) 
+        REFERENCES dbo.cor_FeeMaster(FeeMasterID),
+    CONSTRAINT CK_cor_CommunityFeeVariances_VarianceType 
+        CHECK (VarianceType IN ('Standard', 'Not Billed', 'Custom')),
+    CONSTRAINT CK_cor_CommunityFeeVariances_CustomAmount 
+        CHECK (
+            (VarianceType = 'Custom' AND CustomAmount IS NOT NULL) OR
+            (VarianceType != 'Custom' AND CustomAmount IS NULL)
+        )
+);
+GO
+
+-- Indexes
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_CommunityFeeVariances_CommunityID' AND object_id = OBJECT_ID('dbo.cor_CommunityFeeVariances'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_cor_CommunityFeeVariances_CommunityID 
+        ON dbo.cor_CommunityFeeVariances(CommunityID);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_CommunityFeeVariances_FeeMasterID' AND object_id = OBJECT_ID('dbo.cor_CommunityFeeVariances'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_cor_CommunityFeeVariances_FeeMasterID 
+        ON dbo.cor_CommunityFeeVariances(FeeMasterID);
+END
+GO
+
+-- Unique constraint: One variance per fee per community (only active ones)
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UQ_cor_CommunityFeeVariances_Community_Fee' AND object_id = OBJECT_ID('dbo.cor_CommunityFeeVariances'))
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX UQ_cor_CommunityFeeVariances_Community_Fee 
+        ON dbo.cor_CommunityFeeVariances(CommunityID, FeeMasterID)
+        WHERE IsActive = 1;
+END
+GO
+
+-- =============================================
+-- Step 5g: Create Commitment Fees Table
+-- =============================================
+-- Tracks HOA commitment fees by commitment type (hybrid fees)
+-- Each community can have multiple fees per commitment type
+
+CREATE TABLE dbo.cor_CommitmentFees (
+    CommitmentFeeID     uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_CommitmentFees PRIMARY KEY DEFAULT NEWID(),
+    CommunityID         uniqueidentifier NOT NULL,
+    CommitmentTypeID    uniqueidentifier NOT NULL,
+    EntryType           nvarchar(50) NOT NULL DEFAULT 'Compensation',
+    FeeName             nvarchar(200) NOT NULL,
+    Value               decimal(12,2) NULL,
+    Notes               nvarchar(500) NULL,
+    IsActive            bit NOT NULL DEFAULT 1,
+    CreatedOn           datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy           uniqueidentifier NULL,
+    ModifiedOn          datetime2 NULL,
+    ModifiedBy          uniqueidentifier NULL,
+    
+    CONSTRAINT FK_cor_CommitmentFees_Community 
+        FOREIGN KEY (CommunityID) 
+        REFERENCES dbo.cor_Communities(CommunityID),
+    CONSTRAINT FK_cor_CommitmentFees_CommitmentType 
+        FOREIGN KEY (CommitmentTypeID) 
+        REFERENCES dbo.cor_DynamicDropChoices(ChoiceID),
+    CONSTRAINT CK_cor_CommitmentFees_EntryType 
+        CHECK (EntryType IN ('Compensation', 'Commitment'))
+);
+GO
+
+-- Indexes
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_CommitmentFees_CommunityID' AND object_id = OBJECT_ID('dbo.cor_CommitmentFees'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_cor_CommitmentFees_CommunityID 
+        ON dbo.cor_CommitmentFees(CommunityID);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_CommitmentFees_CommitmentTypeID' AND object_id = OBJECT_ID('dbo.cor_CommitmentFees'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_cor_CommitmentFees_CommitmentTypeID 
+        ON dbo.cor_CommitmentFees(CommitmentTypeID);
+END
+GO
+
+-- =============================================
 -- Step 6: Insert Default Dynamic Drop Choices
 -- =============================================
 -- Insert dropdown choices AFTER tables are created
@@ -497,7 +630,17 @@ BEGIN
         (NEWID(), 'ticket-statuses', 'InProgress', 2, 0, 1, 0, SYSUTCDATETIME(), NULL),
         (NEWID(), 'ticket-statuses', 'Hold', 3, 0, 1, 0, SYSUTCDATETIME(), NULL),
         (NEWID(), 'ticket-statuses', 'Completed', 4, 0, 1, 0, SYSUTCDATETIME(), NULL),
-        (NEWID(), 'ticket-statuses', 'Rejected', 5, 0, 1, 0, SYSUTCDATETIME(), NULL);
+        (NEWID(), 'ticket-statuses', 'Rejected', 5, 0, 1, 0, SYSUTCDATETIME(), NULL),
+        
+        -- =============================================
+        -- FEE MANAGEMENT DROPDOWNS
+        -- =============================================
+        
+        -- Commitment Types (for hybrid fees)
+        (NEWID(), 'commitment-types', 'Manager Monthly', 1, 0, 1, 0, SYSUTCDATETIME(), NULL),
+        (NEWID(), 'commitment-types', 'Lifestyle Monthly', 2, 0, 1, 0, SYSUTCDATETIME(), NULL),
+        (NEWID(), 'commitment-types', 'Assistant Monthly', 3, 0, 1, 0, SYSUTCDATETIME(), NULL),
+        (NEWID(), 'commitment-types', 'Fixed Compensation', 4, 0, 1, 0, SYSUTCDATETIME(), NULL);
     
     PRINT 'Inserted all default dropdown choices.';
 END
@@ -507,19 +650,291 @@ BEGIN
 END
 GO
 
+-- =============================================
+-- Step 7: Insert Master Fees (Seed Data)
+-- =============================================
+-- Populate the master fee catalog with standard fees
+-- Only insert if fees don't already exist
+IF NOT EXISTS (SELECT 1 FROM dbo.cor_FeeMaster WHERE IsActive = 1)
+BEGIN
+    INSERT INTO dbo.cor_FeeMaster (FeeName, DefaultAmount, DisplayOrder, IsActive, CreatedOn)
+    VALUES
+        ('Copies', 0.20, 1, 1, SYSUTCDATETIME()),
+        ('Envelopes', 0.35, 2, 1, SYSUTCDATETIME()),
+        ('Coupons', 10.00, 3, 1, SYSUTCDATETIME()),
+        ('Handling: Mailed Correspondence', 1.00, 4, 1, SYSUTCDATETIME()),
+        ('Handling: E-Statements', 1.25, 5, 1, SYSUTCDATETIME()),
+        ('Handling: Payables', 2.50, 6, 1, SYSUTCDATETIME()),
+        ('Handling: Physical Checks', 2.50, 7, 1, SYSUTCDATETIME()),
+        ('Handling: Rushed Payables', 25.00, 8, 1, SYSUTCDATETIME()),
+        ('Handling: Returned Mail', 10.00, 9, 1, SYSUTCDATETIME()),
+        ('Handling: Certified Mail', 10.00, 10, 1, SYSUTCDATETIME()),
+        ('Handling: Deed Restriction Letters', 2.00, 11, 1, SYSUTCDATETIME()),
+        ('Postage', 5.00, 12, 1, SYSUTCDATETIME()),
+        ('Amenity Access Device Processing', 20.00, 13, 1, SYSUTCDATETIME()),
+        ('Gate Administration', 45.00, 14, 1, SYSUTCDATETIME()),
+        ('1099 Processing', 40.00, 15, 1, SYSUTCDATETIME()),
+        ('Tax Return', 375.00, 16, 1, SYSUTCDATETIME()),
+        ('State Governance', 250.00, 17, 1, SYSUTCDATETIME()),
+        ('Tech Fee', 45.00, 18, 1, SYSUTCDATETIME()),
+        ('Special Assessment Administration', 150.00, 19, 1, SYSUTCDATETIME()),
+        ('Payment Plan Administration', 25.00, 20, 1, SYSUTCDATETIME()),
+        ('Petty Cash Account', 50.00, 21, 1, SYSUTCDATETIME()),
+        ('Board Controlled Account', 50.00, 22, 1, SYSUTCDATETIME()),
+        ('Transition Fee', 650.00, 23, 1, SYSUTCDATETIME());
+    
+    PRINT 'Inserted ' + CAST(@@ROWCOUNT AS varchar(10)) + ' master fees.';
+END
+ELSE
+BEGIN
+    PRINT 'Master fees already exist. Skipping insert.';
+END
+GO
+
 PRINT '=============================================';
 PRINT 'Test Client Database (Template) setup complete!';
 PRINT '=============================================';
 PRINT 'Created database: hoa_nexus_testclient';
 PRINT 'This serves as the template/seed for all future clients.';
 PRINT '';
+-- =============================================
+-- Step 10: Create File Storage Tables
+-- =============================================
+
+-- cor_Folders: Stores folder structure for file organization
+IF OBJECT_ID('dbo.cor_Folders', 'U') IS NOT NULL
+BEGIN
+    IF OBJECT_ID('FK_cor_Folders_ParentFolder', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_Folders DROP CONSTRAINT FK_cor_Folders_ParentFolder;
+    IF OBJECT_ID('FK_cor_Folders_Community', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_Folders DROP CONSTRAINT FK_cor_Folders_Community;
+    DROP TABLE dbo.cor_Folders;
+    PRINT 'Dropped existing cor_Folders table.';
+END
+GO
+
+CREATE TABLE dbo.cor_Folders (
+    FolderID              uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_Folders PRIMARY KEY DEFAULT NEWID(),
+    CommunityID           uniqueidentifier NULL, -- NULL = global/corporate folder, NOT NULL = community-specific
+    ParentFolderID        uniqueidentifier NULL,
+    FolderName            nvarchar(255) NOT NULL,
+    FolderPath            nvarchar(1000) NULL, -- Full path like "/Invoices/2024/January"
+    FolderType            nvarchar(50) NOT NULL DEFAULT 'Community', -- 'Community', 'Corporate', 'Global'
+    DisplayOrder          int NOT NULL DEFAULT 0,
+    IsActive              bit NOT NULL DEFAULT 1,
+    CreatedOn             datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy             uniqueidentifier NULL,
+    ModifiedOn            datetime2 NULL,
+    ModifiedBy            uniqueidentifier NULL,
+    
+    CONSTRAINT FK_cor_Folders_Community 
+        FOREIGN KEY (CommunityID) 
+        REFERENCES dbo.cor_Communities(CommunityID),
+    CONSTRAINT FK_cor_Folders_ParentFolder 
+        FOREIGN KEY (ParentFolderID) 
+        REFERENCES dbo.cor_Folders(FolderID),
+    CONSTRAINT CK_cor_Folders_FolderType 
+        CHECK (FolderType IN ('Community', 'Corporate', 'Global')),
+    CONSTRAINT CK_cor_Folders_FolderType_CommunityID 
+        CHECK (
+            (FolderType = 'Community' AND CommunityID IS NOT NULL) OR
+            (FolderType IN ('Corporate', 'Global') AND CommunityID IS NULL)
+        )
+);
+GO
+
+-- Indexes for cor_Folders
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Folders_CommunityID' AND object_id = OBJECT_ID('dbo.cor_Folders'))
+    CREATE INDEX IX_cor_Folders_CommunityID ON dbo.cor_Folders(CommunityID);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Folders_ParentFolderID' AND object_id = OBJECT_ID('dbo.cor_Folders'))
+    CREATE INDEX IX_cor_Folders_ParentFolderID ON dbo.cor_Folders(ParentFolderID);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Folders_FolderType' AND object_id = OBJECT_ID('dbo.cor_Folders'))
+    CREATE INDEX IX_cor_Folders_FolderType ON dbo.cor_Folders(FolderType);
+GO
+
+-- cor_Files: Stores file metadata (actual files stored in blob storage)
+IF OBJECT_ID('dbo.cor_Files', 'U') IS NOT NULL
+BEGIN
+    IF OBJECT_ID('FK_cor_Files_Folder', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_Files DROP CONSTRAINT FK_cor_Files_Folder;
+    IF OBJECT_ID('FK_cor_Files_Community', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_Files DROP CONSTRAINT FK_cor_Files_Community;
+    DROP TABLE dbo.cor_Files;
+    PRINT 'Dropped existing cor_Files table.';
+END
+GO
+
+CREATE TABLE dbo.cor_Files (
+    FileID                 uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_Files PRIMARY KEY DEFAULT NEWID(),
+    FolderID               uniqueidentifier NULL,
+    CommunityID            uniqueidentifier NULL, -- NULL = corporate file, NOT NULL = community file
+    FileName               nvarchar(255) NOT NULL, -- Original filename
+    FileNameStored         nvarchar(255) NOT NULL, -- Filename as stored (with GUID or sanitized)
+    FilePath                nvarchar(1000) NOT NULL, -- Full path to file in blob storage or local
+    FileSize                bigint NOT NULL, -- Size in bytes
+    FolderType             nvarchar(50) NOT NULL DEFAULT 'Community', -- 'Community', 'Corporate'
+    MimeType               nvarchar(100) NULL, -- e.g., "application/pdf", "image/jpeg"
+    FileType               nvarchar(50) NULL, -- e.g., "invoice", "document", "image"
+    IsActive                bit NOT NULL DEFAULT 1,
+    CreatedOn               datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy               uniqueidentifier NULL,
+    ModifiedOn              datetime2 NULL,
+    ModifiedBy              uniqueidentifier NULL,
+    
+    CONSTRAINT FK_cor_Files_Folder 
+        FOREIGN KEY (FolderID) 
+        REFERENCES dbo.cor_Folders(FolderID),
+    CONSTRAINT FK_cor_Files_Community 
+        FOREIGN KEY (CommunityID) 
+        REFERENCES dbo.cor_Communities(CommunityID),
+    CONSTRAINT CK_cor_Files_FolderType 
+        CHECK (FolderType IN ('Community', 'Corporate')),
+    CONSTRAINT CK_cor_Files_FolderType_CommunityID 
+        CHECK (
+            (FolderType = 'Community' AND CommunityID IS NOT NULL) OR
+            (FolderType = 'Corporate' AND CommunityID IS NULL)
+        )
+);
+GO
+
+-- Indexes for cor_Files
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Files_FolderID' AND object_id = OBJECT_ID('dbo.cor_Files'))
+    CREATE INDEX IX_cor_Files_FolderID ON dbo.cor_Files(FolderID);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Files_CommunityID' AND object_id = OBJECT_ID('dbo.cor_Files'))
+    CREATE INDEX IX_cor_Files_CommunityID ON dbo.cor_Files(CommunityID);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Files_FolderType' AND object_id = OBJECT_ID('dbo.cor_Files'))
+    CREATE INDEX IX_cor_Files_FolderType ON dbo.cor_Files(FolderType);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Files_FileType' AND object_id = OBJECT_ID('dbo.cor_Files'))
+    CREATE INDEX IX_cor_Files_FileType ON dbo.cor_Files(FileType);
+GO
+
+PRINT 'File storage tables (cor_Folders, cor_Files) created successfully.';
+GO
+
+-- =============================================
+-- Step 11: Create Invoice Tables
+-- =============================================
+-- Simple snapshot-based invoice system for proof-of-concept
+
+-- cor_Invoices: Invoice header/master record
+IF OBJECT_ID('dbo.cor_Invoices', 'U') IS NOT NULL
+BEGIN
+    IF OBJECT_ID('FK_cor_Invoices_Community', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_Invoices DROP CONSTRAINT FK_cor_Invoices_Community;
+    IF OBJECT_ID('FK_cor_Invoices_File', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_Invoices DROP CONSTRAINT FK_cor_Invoices_File;
+    DROP TABLE dbo.cor_Invoices;
+    PRINT 'Dropped existing cor_Invoices table.';
+END
+GO
+
+CREATE TABLE dbo.cor_Invoices (
+    InvoiceID           uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_Invoices PRIMARY KEY DEFAULT NEWID(),
+    CommunityID         uniqueidentifier NOT NULL,
+    InvoiceNumber       varchar(50) NOT NULL,
+    InvoiceDate         date NOT NULL,
+    Total               decimal(12,2) NOT NULL,
+    Status              varchar(50) NOT NULL DEFAULT 'Draft',
+    FileID              uniqueidentifier NULL,
+    CreatedOn           datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy           uniqueidentifier NULL,
+    ModifiedOn          datetime2 NULL,
+    ModifiedBy          uniqueidentifier NULL,
+    
+    CONSTRAINT FK_cor_Invoices_Community 
+        FOREIGN KEY (CommunityID) 
+        REFERENCES dbo.cor_Communities(CommunityID),
+    CONSTRAINT FK_cor_Invoices_File 
+        FOREIGN KEY (FileID) 
+        REFERENCES dbo.cor_Files(FileID)
+);
+GO
+
+-- Indexes for cor_Invoices
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Invoices_CommunityID' AND object_id = OBJECT_ID('dbo.cor_Invoices'))
+    CREATE INDEX IX_cor_Invoices_CommunityID ON dbo.cor_Invoices(CommunityID);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UQ_cor_Invoices_InvoiceNumber' AND object_id = OBJECT_ID('dbo.cor_Invoices'))
+    CREATE UNIQUE INDEX UQ_cor_Invoices_InvoiceNumber ON dbo.cor_Invoices(InvoiceNumber);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Invoices_InvoiceDate' AND object_id = OBJECT_ID('dbo.cor_Invoices'))
+    CREATE INDEX IX_cor_Invoices_InvoiceDate ON dbo.cor_Invoices(InvoiceDate);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Invoices_Status' AND object_id = OBJECT_ID('dbo.cor_Invoices'))
+    CREATE INDEX IX_cor_Invoices_Status ON dbo.cor_Invoices(Status);
+GO
+
+-- cor_InvoiceCharges: Individual line items on invoices (snapshot-based)
+IF OBJECT_ID('dbo.cor_InvoiceCharges', 'U') IS NOT NULL
+BEGIN
+    IF OBJECT_ID('FK_cor_InvoiceCharges_Invoice', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_InvoiceCharges DROP CONSTRAINT FK_cor_InvoiceCharges_Invoice;
+    DROP TABLE dbo.cor_InvoiceCharges;
+    PRINT 'Dropped existing cor_InvoiceCharges table.';
+END
+GO
+
+CREATE TABLE dbo.cor_InvoiceCharges (
+    InvoiceChargeID     uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_InvoiceCharges PRIMARY KEY DEFAULT NEWID(),
+    InvoiceID           uniqueidentifier NOT NULL,
+    Description         varchar(200) NOT NULL,
+    Amount              decimal(12,2) NOT NULL,
+    DisplayOrder        int NOT NULL DEFAULT 0,
+    CreatedOn           datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy           uniqueidentifier NULL,
+    ModifiedOn          datetime2 NULL,
+    ModifiedBy          uniqueidentifier NULL,
+    
+    CONSTRAINT FK_cor_InvoiceCharges_Invoice 
+        FOREIGN KEY (InvoiceID) 
+        REFERENCES dbo.cor_Invoices(InvoiceID)
+        ON DELETE CASCADE
+);
+GO
+
+-- Indexes for cor_InvoiceCharges
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_InvoiceCharges_InvoiceID' AND object_id = OBJECT_ID('dbo.cor_InvoiceCharges'))
+    CREATE INDEX IX_cor_InvoiceCharges_InvoiceID ON dbo.cor_InvoiceCharges(InvoiceID);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_InvoiceCharges_DisplayOrder' AND object_id = OBJECT_ID('dbo.cor_InvoiceCharges'))
+    CREATE INDEX IX_cor_InvoiceCharges_DisplayOrder ON dbo.cor_InvoiceCharges(InvoiceID, DisplayOrder);
+GO
+
+PRINT 'Invoice tables (cor_Invoices, cor_InvoiceCharges) created successfully.';
+GO
+
 PRINT 'Created tables:';
 PRINT '  - cor_Stakeholders (with GUIDs)';
 PRINT '  - cor_Communities';
 PRINT '  - cor_ManagementFees';
 PRINT '  - cor_BillingInformation';
 PRINT '  - cor_BoardInformation';
+PRINT '  - cor_FeeMaster (with seed data)';
+PRINT '  - cor_CommunityFeeVariances';
+PRINT '  - cor_CommitmentFees';
 PRINT '  - cor_DynamicDropChoices (with sample data)';
+PRINT '  - cor_Folders';
+PRINT '  - cor_Files';
+PRINT '  - cor_Invoices';
+PRINT '  - cor_InvoiceCharges';
 PRINT '';
 PRINT 'Next steps:';
 PRINT '  1. Update backend connection strings to use hoa_nexus_testclient';

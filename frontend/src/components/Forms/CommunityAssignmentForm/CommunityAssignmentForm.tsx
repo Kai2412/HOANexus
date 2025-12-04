@@ -177,13 +177,6 @@ const CommunityAssignmentForm: React.FC<CommunityAssignmentFormProps> = ({ selec
 
   const breadcrumbs = [
     { 
-      label: 'Community Info', 
-      onClick: () => {
-        // Close overlay entirely to go back to Community Info
-        window.dispatchEvent(new CustomEvent('overlay:close'));
-      }
-    },
-    { 
       label: 'Forms', 
       onClick: handleCancel  // Go back to Forms categories
     },

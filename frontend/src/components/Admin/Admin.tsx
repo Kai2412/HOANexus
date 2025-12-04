@@ -11,11 +11,17 @@ import {
   ArrowUpTrayIcon,
   CheckCircleIcon,
   XCircleIcon,
-  BuildingOfficeIcon
+  BuildingOfficeIcon,
+  FolderIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import AdminDropDownTemplate from './AdminDropDownTemplate/AdminDropDownTemplate';
 import BulkUpload from './BulkUpload';
+import CorporateFileBrowser from '../CorporateFileBrowser';
+import CorporateProcesses from '../CorporateProcesses';
 import dataService from '../../services/dataService';
+import type { FeeMaster, CreateFeeMasterData, UpdateFeeMasterData, Folder, CreateFolderData, UpdateFolderData } from '../../types';
+import { useCommunity } from '../../context';
 
 interface AdminProps {
   onClose?: () => void;
@@ -26,6 +32,7 @@ type DropdownCategory =
   | 'acquisition-type'
   | 'billing-frequency'
   | 'client-type'
+  | 'commitment-types'
   | 'development-stage'
   | 'fee-type'
   | 'management-type'
@@ -37,7 +44,7 @@ type DropdownCategory =
   | 'stakeholder-types'
   | 'ticket-statuses';
 type BulkUploadType = 'communities-upload' | 'stakeholders-upload';
-type AdminCategory = 'dynamic-drop-choices' | 'bulk-uploads' | 'other';
+type AdminCategory = 'dynamic-drop-choices' | 'bulk-uploads' | 'master-fees' | 'folder-management' | 'corporate-filing' | 'corporate-processes' | 'other';
 type AdminView = 'categories' | AdminCategory | DropdownCategory | BulkUploadType;
 
 interface DropdownChoice {
@@ -51,6 +58,7 @@ interface DropdownChoice {
 }
 
 const Admin: React.FC<AdminProps> = ({ onClose }) => {
+  const { communities } = useCommunity();
   const [currentView, setCurrentView] = useState<AdminView>('categories');
   const [expandedLevels, setExpandedLevels] = useState<Set<number>>(new Set([1, 2, 3]));
   const [expandedStakeholderTypes, setExpandedStakeholderTypes] = useState<Set<string>>(new Set());
@@ -62,12 +70,14 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
   const [feeTypeChoices, setFeeTypeChoices] = useState<DropdownChoice[]>([]);
   const [billingFrequencyChoices, setBillingFrequencyChoices] = useState<DropdownChoice[]>([]);
   const [noticeRequirementsChoices, setNoticeRequirementsChoices] = useState<DropdownChoice[]>([]);
+  const [commitmentTypesChoices, setCommitmentTypesChoices] = useState<DropdownChoice[]>([]);
   const [stakeholderTypeChoices, setStakeholderTypeChoices] = useState<DropdownChoice[]>([]);
   const [stakeholderSubTypes, setStakeholderSubTypes] = useState<Record<string, DropdownChoice[]>>({});
   const [accessLevelChoices, setAccessLevelChoices] = useState<DropdownChoice[]>([]);
   const [preferredContactMethodChoices, setPreferredContactMethodChoices] = useState<DropdownChoice[]>([]);
   const [statusChoices, setStatusChoices] = useState<DropdownChoice[]>([]);
   const [ticketStatusChoices, setTicketStatusChoices] = useState<DropdownChoice[]>([]);
+  const [feeMasters, setFeeMasters] = useState<FeeMaster[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingChoice, setEditingChoice] = useState<DropdownChoice | null>(null);
   const [editingValue, setEditingValue] = useState('');
@@ -75,6 +85,20 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
   const [newChoiceValue, setNewChoiceValue] = useState('');
   const [addingSubTypeFor, setAddingSubTypeFor] = useState<string | null>(null);
   const [newSubTypeValue, setNewSubTypeValue] = useState('');
+  const [editingFee, setEditingFee] = useState<FeeMaster | null>(null);
+  const [editingFeeName, setEditingFeeName] = useState('');
+  const [editingFeeAmount, setEditingFeeAmount] = useState('');
+  const [addingNewFee, setAddingNewFee] = useState(false);
+  const [newFeeName, setNewFeeName] = useState('');
+  const [newFeeAmount, setNewFeeAmount] = useState('');
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+  const [addingNewFolder, setAddingNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [addingSubFolderFor, setAddingSubFolderFor] = useState<string | null>(null);
+  const [newSubFolderName, setNewSubFolderName] = useState('');
 
   const toggleLevel = (level: number) => {
     setExpandedLevels(prev => {
@@ -137,6 +161,30 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       description: 'Manage all dropdown options and choices used throughout the system'
     },
     {
+      id: 'master-fees' as AdminCategory,
+      name: 'Master Fees',
+      icon: BuildingOfficeIcon,
+      description: 'Manage the master catalog of standard fees used across all communities'
+    },
+    {
+      id: 'folder-management' as AdminCategory,
+      name: 'Folder Management',
+      icon: FolderIcon,
+      description: 'Create and manage folder structure for all communities'
+    },
+    {
+      id: 'corporate-filing' as AdminCategory,
+      name: 'Corporate Filing',
+      icon: FolderIcon,
+      description: 'Manage corporate-wide files and folders (separate from community files)'
+    },
+    {
+      id: 'corporate-processes' as AdminCategory,
+      name: 'Corporate Processes',
+      icon: CogIcon,
+      description: 'Run automated processes for corporate-wide operations'
+    },
+    {
       id: 'bulk-uploads' as AdminCategory,
       name: 'Bulk Uploads',
       icon: ArrowUpTrayIcon,
@@ -152,6 +200,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     { id: 'acquisition-type' as DropdownCategory, name: 'Acquisition Type', description: 'Manage acquisition type options (Organic, Acquisition)' },
     { id: 'billing-frequency' as DropdownCategory, name: 'Billing Frequency', description: 'Manage billing frequency options (Annual, Monthly, Semi-Annual, Quarterly)' },
     { id: 'client-type' as DropdownCategory, name: 'Client Type', description: 'Manage client type options (HOA, Condo, Commercial, etc.)' },
+    { id: 'commitment-types' as DropdownCategory, name: 'Commitment Types', description: 'Manage commitment type options for hybrid fees (Manager Monthly, Lifestyle Monthly, Assistant Monthly, Fixed Compensation)' },
     { id: 'development-stage' as DropdownCategory, name: 'Development Stage', description: 'Manage development stage options (Homeowner Controlled, Declarant Controlled)' },
     { id: 'fee-type' as DropdownCategory, name: 'Fee Type', description: 'Manage fee type options (Flat Rate, Tiered, Per Unit)' },
     { id: 'management-type' as DropdownCategory, name: 'Management Type', description: 'Manage management type options (Portfolio, Onsite, Hybrid)' },
@@ -190,12 +239,6 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
   const getBreadcrumbs = (): Array<{ label: string; onClick?: () => void; isActive?: boolean }> => {
     const base: Array<{ label: string; onClick?: () => void; isActive?: boolean }> = [
       { 
-        label: 'Community Info', 
-        onClick: () => {
-          window.dispatchEvent(new CustomEvent('overlay:close'));
-        }
-      },
-      { 
         label: 'Admin',
         onClick: () => setCurrentView('categories')
       }
@@ -213,6 +256,30 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         onClick: () => setCurrentView('bulk-uploads'),
         isActive: true
       });
+    } else if (currentView === 'master-fees') {
+      base.push({ 
+        label: 'Master Fees',
+        onClick: () => setCurrentView('master-fees'),
+        isActive: true
+      });
+    } else if (currentView === 'folder-management') {
+      base.push({ 
+        label: 'Folder Management',
+        onClick: () => setCurrentView('folder-management'),
+        isActive: true
+      });
+    } else if (currentView === 'corporate-filing') {
+      base.push({ 
+        label: 'Corporate Filing',
+        onClick: () => setCurrentView('corporate-filing'),
+        isActive: true
+      });
+    } else if (currentView === 'corporate-processes') {
+      base.push({ 
+        label: 'Corporate Processes',
+        onClick: () => setCurrentView('corporate-processes'),
+        isActive: true
+      });
     } else if (currentView === 'communities-upload' || currentView === 'stakeholders-upload') {
       base.push({ 
         label: 'Bulk Uploads',
@@ -223,7 +290,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       } else if (currentView === 'stakeholders-upload') {
         base.push({ label: 'Stakeholders', isActive: true });
       }
-    } else if (currentView !== 'categories' && (currentView as string) !== 'dynamic-drop-choices' && (currentView as string) !== 'bulk-uploads') {
+    } else if (currentView !== 'categories' && (currentView as string) !== 'dynamic-drop-choices' && (currentView as string) !== 'bulk-uploads' && (currentView as string) !== 'master-fees' && (currentView as string) !== 'folder-management' && (currentView as string) !== 'corporate-filing' && (currentView as string) !== 'corporate-processes') {
       // We're in a dropdown category
       base.push({ 
         label: 'Dynamic Drop Choices',
@@ -271,6 +338,8 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       loadBillingFrequencyChoices();
     } else if (currentView === 'notice-requirements') {
       loadNoticeRequirementsChoices();
+    } else if (currentView === 'commitment-types') {
+      loadCommitmentTypesChoices();
     } else if (currentView === 'stakeholder-types') {
       loadStakeholderTypeChoices();
     } else if (currentView === 'access-levels') {
@@ -281,7 +350,12 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       loadStatusChoices();
     } else if (currentView === 'ticket-statuses') {
       loadTicketStatusChoices();
+    } else if (currentView === 'master-fees') {
+      loadFeeMasters();
+    } else if (currentView === 'folder-management') {
+      loadFolders();
     }
+    // Corporate filing doesn't need to load anything on mount - it's self-contained
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView]);
 
@@ -433,6 +507,20 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     }
   };
 
+  const loadCommitmentTypesChoices = async () => {
+    setLoading(true);
+    try {
+      const data = await dataService.getDynamicDropChoices(['commitment-types'], true);
+      const choices = (data['commitment-types'] || []) as DropdownChoice[];
+      choices.sort((a, b) => (a.DisplayOrder || 0) - (b.DisplayOrder || 0));
+      setCommitmentTypesChoices(choices);
+    } catch (error) {
+      logger.error('Error loading commitment types choices', 'Admin', undefined, error as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadAccessLevelChoices = async () => {
     setLoading(true);
     try {
@@ -489,6 +577,152 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     }
   };
 
+  const loadFeeMasters = async () => {
+    setLoading(true);
+    try {
+      const fees = await dataService.getAllFeeMasters();
+      fees.sort((a, b) => a.displayOrder - b.displayOrder);
+      setFeeMasters(fees);
+    } catch (error) {
+      logger.error('Error loading fee masters', 'Admin', undefined, error as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFolders = async () => {
+    setLoading(true);
+    try {
+      // Load global folders (CommunityID = NULL)
+      // Use any community ID to get global folders (they'll be returned with NULL CommunityID)
+      if (communities.length > 0) {
+        const firstCommunity = communities[0];
+        const allFolders = await dataService.getFoldersByCommunity(firstCommunity.id);
+        // Filter to only show global folders (CommunityID = null)
+        const globalFolders = allFolders.filter(f => f.communityId === null || f.communityId === undefined);
+        setFolders(globalFolders);
+      }
+    } catch (error) {
+      logger.error('Error loading folders', 'Admin', undefined, error as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
+
+  const handleAddNewFolder = async () => {
+    if (!newFolderName.trim()) return;
+
+    try {
+      // Create global folder (CommunityID = null, FolderType = 'Global')
+      const createData: CreateFolderData = {
+        CommunityID: null, // NULL = global folder for all communities
+        FolderName: newFolderName.trim(),
+        FolderType: 'Global', // Explicitly set as Global for Admin-created folders
+        DisplayOrder: folders.filter(f => !f.parentFolderId).length
+      };
+      
+      await dataService.createFolder(createData);
+      setNewFolderName('');
+      setAddingNewFolder(false);
+      loadFolders();
+    } catch (error) {
+      logger.error('Error creating folder', 'Admin', undefined, error as Error);
+      alert('Failed to create folder. Please try again.');
+    }
+  };
+
+  const handleAddSubFolder = async (parentFolderId: string) => {
+    if (!newSubFolderName.trim()) return;
+
+    try {
+      // Get parent folder
+      const parentFolder = folders.find(f => f.id === parentFolderId);
+      if (!parentFolder) return;
+
+      // Create global subfolder (CommunityID = null, FolderType = 'Global', inherits from parent)
+      const createData: CreateFolderData = {
+        CommunityID: null, // NULL = global folder for all communities
+        ParentFolderID: parentFolderId,
+        FolderName: newSubFolderName.trim(),
+        FolderType: 'Global', // Explicitly set as Global for Admin-created folders
+        DisplayOrder: folders.filter(f => f.parentFolderId === parentFolderId).length
+      };
+      
+      await dataService.createFolder(createData);
+      setNewSubFolderName('');
+      setAddingSubFolderFor(null);
+      loadFolders();
+    } catch (error) {
+      logger.error('Error creating subfolder', 'Admin', undefined, error as Error);
+      alert('Failed to create subfolder. Please try again.');
+    }
+  };
+
+  const handleEditFolder = (folder: Folder) => {
+    setEditingFolder(folder);
+    setEditingFolderName(folder.name);
+  };
+
+  const handleSaveFolderEdit = async () => {
+    if (!editingFolder || !editingFolderName.trim()) return;
+
+    try {
+      // Update the global folder directly
+      const updateData: UpdateFolderData = {
+        FolderName: editingFolderName.trim()
+      };
+      
+      await dataService.updateFolder(editingFolder.id, updateData);
+      setEditingFolder(null);
+      setEditingFolderName('');
+      loadFolders();
+    } catch (error) {
+      logger.error('Error updating folder', 'Admin', undefined, error as Error);
+      alert('Failed to update folder. Please try again.');
+    }
+  };
+
+  const handleDeleteFolder = async (folder: Folder) => {
+    if (!confirm(`Are you sure you want to delete "${folder.name}"? This will delete it for all communities.`)) {
+      return;
+    }
+
+    try {
+      // Delete the global folder directly
+      await dataService.deleteFolder(folder.id);
+      loadFolders();
+    } catch (error) {
+      logger.error('Error deleting folder', 'Admin', undefined, error as Error);
+      alert('Failed to delete folder. It may contain files or subfolders.');
+    }
+  };
+
+  const getSubFolders = (parentId: string | null): Folder[] => {
+    return folders.filter(f => f.parentFolderId === parentId);
+  };
+
+  // Calculate folder depth (how many levels deep from root)
+  const getFolderDepth = (folder: Folder): number => {
+    if (!folder.parentFolderId) return 0; // Root level
+    
+    const parent = folders.find(f => f.id === folder.parentFolderId);
+    if (!parent) return 0;
+    
+    return 1 + getFolderDepth(parent);
+  };
+
   // Generic handlers that work with current view
   const getCurrentChoices = (): DropdownChoice[] => {
     if (currentView === 'client-type') return clientTypeChoices;
@@ -499,6 +733,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     if (currentView === 'fee-type') return feeTypeChoices;
     if (currentView === 'billing-frequency') return billingFrequencyChoices;
     if (currentView === 'notice-requirements') return noticeRequirementsChoices;
+    if (currentView === 'commitment-types') return commitmentTypesChoices;
     if (currentView === 'stakeholder-types') return stakeholderTypeChoices;
     if (currentView === 'access-levels') return accessLevelChoices;
     if (currentView === 'preferred-contact-methods') return preferredContactMethodChoices;
@@ -517,6 +752,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       'fee-type': 'fee-types',
       'billing-frequency': 'billing-frequency',
       'notice-requirements': 'notice-requirements',
+      'commitment-types': 'commitment-types',
       'stakeholder-types': 'stakeholder-types',
       'access-levels': 'access-levels',
       'preferred-contact-methods': 'preferred-contact-methods',
@@ -536,6 +772,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     else if (currentView === 'fee-type') loadFeeTypeChoices();
     else if (currentView === 'billing-frequency') loadBillingFrequencyChoices();
     else if (currentView === 'notice-requirements') loadNoticeRequirementsChoices();
+    else if (currentView === 'commitment-types') loadCommitmentTypesChoices();
     else if (currentView === 'stakeholder-types') loadStakeholderTypeChoices();
     else if (currentView === 'access-levels') loadAccessLevelChoices();
     else if (currentView === 'preferred-contact-methods') loadPreferredContactMethodChoices();
@@ -557,6 +794,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     else if (currentView === 'fee-type') setFeeTypeChoices(newChoices);
     else if (currentView === 'billing-frequency') setBillingFrequencyChoices(newChoices);
     else if (currentView === 'notice-requirements') setNoticeRequirementsChoices(newChoices);
+    else if (currentView === 'commitment-types') setCommitmentTypesChoices(newChoices);
     else if (currentView === 'stakeholder-types') setStakeholderTypeChoices(newChoices);
     else if (currentView === 'access-levels') setAccessLevelChoices(newChoices);
     else if (currentView === 'preferred-contact-methods') setPreferredContactMethodChoices(newChoices);
@@ -1194,6 +1432,578 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     );
   };
 
+  // Fee Master handlers
+  const handleEditFee = (fee: FeeMaster) => {
+    setEditingFee(fee);
+    setEditingFeeName(fee.feeName);
+    setEditingFeeAmount(fee.defaultAmount.toString());
+  };
+
+  const handleSaveFeeEdit = async () => {
+    if (!editingFee || !editingFeeName.trim() || !editingFeeAmount) return;
+    
+    const amount = parseFloat(editingFeeAmount);
+    if (isNaN(amount)) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const updateData: UpdateFeeMasterData = {
+        FeeName: editingFeeName.trim(),
+        DefaultAmount: amount
+      };
+      await dataService.updateFeeMaster(editingFee.id, updateData);
+      setEditingFee(null);
+      setEditingFeeName('');
+      setEditingFeeAmount('');
+      loadFeeMasters();
+    } catch (error) {
+      logger.error('Error updating fee', 'Admin', undefined, error as Error);
+    }
+  };
+
+  const handleCancelFeeEdit = () => {
+    setEditingFee(null);
+    setEditingFeeName('');
+    setEditingFeeAmount('');
+  };
+
+  const handleToggleFeeActive = async (fee: FeeMaster) => {
+    const newActiveStatus = !fee.isActive;
+    const action = newActiveStatus ? 'activate' : 'deactivate';
+    
+    if (!confirm(`Are you sure you want to ${action} "${fee.feeName}"?`)) return;
+    
+    try {
+      await dataService.updateFeeMaster(fee.id, { IsActive: newActiveStatus });
+      loadFeeMasters();
+    } catch (error) {
+      logger.error('Error toggling fee active status', 'Admin', undefined, error as Error);
+    }
+  };
+
+  const handleAddNewFee = async () => {
+    if (!newFeeName.trim() || !newFeeAmount) return;
+    
+    const amount = parseFloat(newFeeAmount);
+    if (isNaN(amount)) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const createData: CreateFeeMasterData = {
+        FeeName: newFeeName.trim(),
+        DefaultAmount: amount
+      };
+      await dataService.createFeeMaster(createData);
+      setNewFeeName('');
+      setNewFeeAmount('');
+      setAddingNewFee(false);
+      loadFeeMasters();
+    } catch (error) {
+      logger.error('Error creating fee', 'Admin', undefined, error as Error);
+    }
+  };
+
+  const handleDeleteFee = async (fee: FeeMaster) => {
+    if (!confirm(`Are you sure you want to delete "${fee.feeName}"? This will archive the fee.`)) return;
+    
+    try {
+      await dataService.deleteFeeMaster(fee.id);
+      loadFeeMasters();
+    } catch (error) {
+      logger.error('Error deleting fee', 'Admin', undefined, error as Error);
+    }
+  };
+
+  const handleMoveFeeUp = async (index: number) => {
+    if (index === 0) return;
+    const newFees = [...feeMasters];
+    [newFees[index - 1], newFees[index]] = [newFees[index], newFees[index - 1]];
+    
+    // Update display orders
+    const feeOrders = newFees.map((fee, idx) => ({
+      feeMasterId: fee.id,
+      displayOrder: idx + 1
+    }));
+    
+    setFeeMasters(newFees);
+    await dataService.bulkUpdateFeeOrder(feeOrders);
+  };
+
+  const handleMoveFeeDown = async (index: number) => {
+    if (index === feeMasters.length - 1) return;
+    const newFees = [...feeMasters];
+    [newFees[index], newFees[index + 1]] = [newFees[index + 1], newFees[index]];
+    
+    // Update display orders
+    const feeOrders = newFees.map((fee, idx) => ({
+      feeMasterId: fee.id,
+      displayOrder: idx + 1
+    }));
+    
+    setFeeMasters(newFees);
+    await dataService.bulkUpdateFeeOrder(feeOrders);
+  };
+
+  // Recursive function to render a folder and its children (up to 4 levels deep)
+  const renderFolderRecursive = (folder: Folder, depth: number = 0): React.ReactNode => {
+    const subFolders = getSubFolders(folder.id);
+    const isExpanded = expandedFolders.has(folder.id);
+    const isEditing = editingFolder?.id === folder.id;
+    const canAddSubfolder = depth < 4; // Can add subfolders up to depth 3 (which creates level 4, the max)
+
+    return (
+      <div key={folder.id}>
+        {/* Folder Header */}
+        <div 
+          className="p-4 flex items-center justify-between hover:bg-surface-tertiary transition-colors"
+          style={{ paddingLeft: `${1 + depth * 3}rem` }}
+        >
+          <div className="flex items-center space-x-3 flex-1">
+            {subFolders.length > 0 ? (
+              <button
+                onClick={() => toggleFolder(folder.id)}
+                className="p-1 text-tertiary hover:text-primary transition-colors"
+              >
+                {isExpanded ? (
+                  <ChevronDownIcon className="w-5 h-5" />
+                ) : (
+                  <ChevronRightIcon className="w-5 h-5" />
+                )}
+              </button>
+            ) : (
+              <div className="w-7" /> // Spacer for alignment when no chevron
+            )}
+            <FolderIcon className={`text-yellow-500 ${depth === 0 ? 'w-6 h-6' : 'w-5 h-5'}`} />
+            {isEditing ? (
+              <div className="flex items-center space-x-2 flex-1">
+                <input
+                  type="text"
+                  value={editingFolderName}
+                  onChange={(e) => setEditingFolderName(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveFolderEdit();
+                    if (e.key === 'Escape') {
+                      setEditingFolder(null);
+                      setEditingFolderName('');
+                    }
+                  }}
+                  autoFocus
+                />
+                <button
+                  onClick={handleSaveFolderEdit}
+                  className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingFolder(null);
+                    setEditingFolderName('');
+                  }}
+                  className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <>
+                <span className={`text-primary ${depth === 0 ? 'font-medium' : ''}`}>{folder.name}</span>
+                {subFolders.length > 0 && (
+                  <span className="px-2 py-1 bg-royal-100 dark:bg-royal-900/30 text-royal-600 dark:text-royal-400 rounded text-xs font-medium">
+                    {subFolders.length} {subFolders.length === 1 ? 'subfolder' : 'subfolders'}
+                  </span>
+                )}
+                {depth >= 4 && (
+                  <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs font-medium">
+                    Max depth
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          {!isEditing && (
+            <div className="flex items-center space-x-2">
+              {canAddSubfolder && !addingSubFolderFor && (
+                <button
+                  onClick={() => {
+                    setAddingSubFolderFor(folder.id);
+                    setNewSubFolderName('');
+                  }}
+                  className="p-2 text-tertiary hover:text-royal-600 dark:hover:text-royal-400 transition-colors"
+                  title="Add Subfolder"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                onClick={() => handleEditFolder(folder)}
+                className="p-2 text-tertiary hover:text-royal-600 dark:hover:text-royal-400 transition-colors"
+                title="Edit"
+              >
+                <PencilIcon className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleDeleteFolder(folder)}
+                className="p-2 text-tertiary hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                title="Delete"
+              >
+                <TrashIcon className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Add Subfolder Input */}
+        {addingSubFolderFor === folder.id && (
+          <div 
+            className="px-4 pb-4 border-b border-primary bg-surface-tertiary"
+            style={{ paddingLeft: `${1 + (depth + 1) * 3}rem` }}
+          >
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={newSubFolderName}
+                onChange={(e) => setNewSubFolderName(e.target.value)}
+                placeholder="Subfolder Name"
+                className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddSubFolder(folder.id);
+                  if (e.key === 'Escape') {
+                    setAddingSubFolderFor(null);
+                    setNewSubFolderName('');
+                  }
+                }}
+                autoFocus
+              />
+              <button
+                onClick={() => handleAddSubFolder(folder.id)}
+                className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setAddingSubFolderFor(null);
+                  setNewSubFolderName('');
+                }}
+                className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Recursively render subfolders */}
+        {isExpanded && subFolders.length > 0 && (
+          <div className="border-t border-primary bg-surface-secondary">
+            {subFolders.map((subFolder) => renderFolderRecursive(subFolder, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderFolderManagement = () => {
+    const rootFolders = getSubFolders(null);
+
+    return (
+      <div className="space-y-4">
+        {loading ? (
+          <div className="text-center py-12">
+            <p className="text-secondary">Loading...</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-surface-secondary border border-primary rounded-lg overflow-hidden">
+              <div className="p-4 flex items-center justify-between border-b border-primary">
+                <div>
+                  <h3 className="text-lg font-semibold text-primary">Folder Structure</h3>
+                  <p className="text-sm text-secondary mt-1">
+                    Folders created here will be available to all communities (up to 4 levels deep)
+                  </p>
+                </div>
+                {!addingNewFolder && (
+                  <button
+                    onClick={() => setAddingNewFolder(true)}
+                    className="flex items-center space-x-1 px-3 py-1 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    <span>Add Root Folder</span>
+                  </button>
+                )}
+              </div>
+
+              {addingNewFolder && (
+                <div className="p-4 border-b border-primary bg-surface">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={newFolderName}
+                      onChange={(e) => setNewFolderName(e.target.value)}
+                      placeholder="Folder Name"
+                      className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAddNewFolder();
+                        if (e.key === 'Escape') {
+                          setAddingNewFolder(false);
+                          setNewFolderName('');
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleAddNewFolder}
+                      className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddingNewFolder(false);
+                        setNewFolderName('');
+                      }}
+                      className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {rootFolders.length === 0 ? (
+                <div className="p-4 text-center text-secondary text-sm">
+                  {addingNewFolder 
+                    ? 'Enter a folder name above and click Save.'
+                    : 'No folders configured. Click "Add Root Folder" to create one.'}
+                </div>
+              ) : (
+                <div className="divide-y divide-primary">
+                  {rootFolders.map((folder) => renderFolderRecursive(folder, 0))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderMasterFees = () => {
+    return (
+      <div className="space-y-4">
+        {loading ? (
+          <div className="text-center py-12">
+            <p className="text-secondary">Loading...</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-surface-secondary border border-primary rounded-lg overflow-hidden">
+              <div className="p-4 flex items-center justify-between border-b border-primary">
+                <h3 className="text-lg font-semibold text-primary">Master Fees</h3>
+                {!addingNewFee && (
+                  <button
+                    onClick={() => setAddingNewFee(true)}
+                    className="flex items-center space-x-1 px-3 py-1 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    <span>Add New Fee</span>
+                  </button>
+                )}
+              </div>
+
+              {addingNewFee && (
+                <div className="p-4 border-b border-primary bg-surface">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={newFeeName}
+                      onChange={(e) => setNewFeeName(e.target.value)}
+                      placeholder="Fee Name"
+                      className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAddNewFee();
+                        if (e.key === 'Escape') {
+                          setAddingNewFee(false);
+                          setNewFeeName('');
+                          setNewFeeAmount('');
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newFeeAmount}
+                      onChange={(e) => setNewFeeAmount(e.target.value)}
+                      placeholder="Amount"
+                      className="w-32 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAddNewFee();
+                        if (e.key === 'Escape') {
+                          setAddingNewFee(false);
+                          setNewFeeName('');
+                          setNewFeeAmount('');
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={handleAddNewFee}
+                      className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddingNewFee(false);
+                        setNewFeeName('');
+                        setNewFeeAmount('');
+                      }}
+                      className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {feeMasters.length === 0 ? (
+                <div className="p-4 text-center text-secondary text-sm">
+                  No fees configured. Click "Add New Fee" to create one.
+                </div>
+              ) : (
+                <div className="divide-y divide-primary">
+                  {feeMasters
+                    .filter(f => f.isActive)
+                    .concat(feeMasters.filter(f => !f.isActive))
+                    .map((fee, index) => {
+                      const activeFees = feeMasters.filter(f => f.isActive);
+                      const activeIndex = activeFees.indexOf(fee);
+                      const displayIndex = activeIndex >= 0 ? activeIndex : activeFees.length;
+                      return (
+                        <div key={fee.id} className={`p-4 flex items-center justify-between transition-colors ${fee.isActive ? 'hover:bg-surface-tertiary' : 'bg-gray-50 dark:bg-gray-900/20 opacity-75'}`}>
+                          {editingFee?.id === fee.id ? (
+                            <div className="flex items-center space-x-2 flex-1">
+                              <input
+                                type="text"
+                                value={editingFeeName}
+                                onChange={(e) => setEditingFeeName(e.target.value)}
+                                className="flex-1 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveFeeEdit();
+                                  if (e.key === 'Escape') handleCancelFeeEdit();
+                                }}
+                                autoFocus
+                              />
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editingFeeAmount}
+                                onChange={(e) => setEditingFeeAmount(e.target.value)}
+                                className="w-32 px-3 py-2 border border-primary rounded bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-royal-600"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveFeeEdit();
+                                  if (e.key === 'Escape') handleCancelFeeEdit();
+                                }}
+                              />
+                              <button
+                                onClick={handleSaveFeeEdit}
+                                className="px-3 py-2 bg-royal-600 hover:bg-royal-700 text-white rounded text-sm transition-colors"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={handleCancelFeeEdit}
+                                className="px-3 py-2 bg-surface-tertiary hover:bg-surface text-primary rounded text-sm transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center space-x-4 flex-1">
+                                <div className="flex flex-col space-y-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className={`text-primary font-medium ${!fee.isActive ? 'opacity-50 line-through' : ''}`}>
+                                      {fee.feeName} - ${fee.defaultAmount.toFixed(2)}
+                                    </span>
+                                    {!fee.isActive && (
+                                      <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs font-medium">
+                                        Inactive
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-tertiary font-mono">GUID: {fee.id}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleMoveFeeUp(displayIndex)}
+                                  disabled={displayIndex === 0 || !fee.isActive}
+                                  className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title={!fee.isActive ? "Activate to reorder" : "Move up"}
+                                >
+                                  <ArrowUpIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveFeeDown(displayIndex)}
+                                  disabled={displayIndex === feeMasters.filter(f => f.isActive).length - 1 || !fee.isActive}
+                                  className="p-2 text-tertiary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title={!fee.isActive ? "Activate to reorder" : "Move down"}
+                                >
+                                  <ArrowDownIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleToggleFeeActive(fee)}
+                                  className={`p-2 transition-colors ${
+                                    fee.isActive
+                                      ? 'text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300'
+                                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                  }`}
+                                  title={fee.isActive ? "Deactivate (archive)" : "Activate"}
+                                >
+                                  {fee.isActive ? (
+                                    <CheckCircleIcon className="w-5 h-5" />
+                                  ) : (
+                                    <XCircleIcon className="w-5 h-5" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleEditFee(fee)}
+                                  disabled={!fee.isActive}
+                                  className="p-2 text-tertiary hover:text-royal-600 dark:hover:text-royal-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title={!fee.isActive ? "Activate to edit" : "Edit"}
+                                >
+                                  <PencilIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteFee(fee)}
+                                  disabled={!fee.isActive}
+                                  className="p-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title={!fee.isActive ? "Already archived" : "Delete (archive)"}
+                                >
+                                  <XCircleIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const renderRoleManagement = () => {
     return (
       <div className="space-y-4">
@@ -1295,6 +2105,10 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     if (currentView === 'communities-upload') return 'Bulk Upload Communities';
     if (currentView === 'stakeholders-upload') return 'Bulk Upload Stakeholders';
     if (currentView === 'bulk-uploads') return 'Bulk Uploads';
+    if (currentView === 'master-fees') return 'Master Fees';
+    if (currentView === 'folder-management') return 'Folder Management';
+    if (currentView === 'corporate-filing') return 'Corporate Filing';
+    if (currentView === 'corporate-processes') return 'Corporate Processes';
     if (currentView === 'dynamic-drop-choices') return 'Dynamic Drop Choices';
     if (currentView === 'categories') return 'Admin Portal';
     
@@ -1315,6 +2129,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         'fee-type': 'Fee Type Management',
         'billing-frequency': 'Billing Frequency Management',
         'notice-requirements': 'Notice Requirements Management',
+        'commitment-types': 'Commitment Types Management',
         'stakeholder-types': 'Stakeholder Types Management',
         'access-levels': 'Access Levels Management',
         'preferred-contact-methods': 'Preferred Contact Methods Management',
@@ -1332,6 +2147,10 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     if (currentView === 'communities-upload') return 'Upload multiple communities at once using a CSV file';
     if (currentView === 'stakeholders-upload') return 'Upload multiple stakeholders at once using a CSV file';
     if (currentView === 'bulk-uploads') return 'Import multiple records at once using CSV files';
+    if (currentView === 'master-fees') return 'Manage the master catalog of standard fees used across all communities';
+    if (currentView === 'folder-management') return 'Create and manage folder structure that applies to all communities';
+    if (currentView === 'corporate-filing') return 'Manage corporate-wide files and folders (separate from community files)';
+    if (currentView === 'corporate-processes') return 'Run automated processes for corporate-wide operations';
     if (currentView === 'dynamic-drop-choices') return 'Manage dropdown options and choices used throughout the system';
     if (currentView === 'categories') return 'Manage system configurations and admin tools';
     
@@ -1352,6 +2171,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         'fee-type': 'Manage fee type options for management fees (Flat Rate, Tiered, Per Unit).',
         'billing-frequency': 'Manage billing frequency options (Annual, Monthly, Semi-Annual, Quarterly).',
         'notice-requirements': 'Manage notice requirement options (30 Days, 60 Days, 90 Days).',
+        'commitment-types': 'Manage commitment type options for hybrid fees (Manager Monthly, Lifestyle Monthly, Assistant Monthly, Fixed Compensation).',
         'stakeholder-types': 'Configure stakeholder types and subtypes',
         'access-levels': 'Manage access levels (None, View, View+Write, View+Write+Delete). System-managed levels cannot be edited or deleted as they are required for permission control.',
         'preferred-contact-methods': 'Manage preferred contact method options (Email, Phone, Mobile, Text, Mail).',
@@ -1461,6 +2281,17 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
             <BulkUpload onBack={() => setCurrentView('bulk-uploads')} />
           )}
 
+          {/* Master Fees View */}
+          {currentView === 'master-fees' && renderMasterFees()}
+          {/* Folder Management View */}
+          {currentView === 'folder-management' && renderFolderManagement()}
+
+          {/* Corporate Filing View */}
+          {currentView === 'corporate-filing' && <CorporateFileBrowser />}
+
+          {/* Corporate Processes View */}
+          {currentView === 'corporate-processes' && <CorporateProcesses />}
+
           {/* Dropdown Category Content Views */}
           {currentView !== 'categories' && currentView !== 'dynamic-drop-choices' && currentView !== 'bulk-uploads' && currentView !== 'communities-upload' && currentView !== 'stakeholders-upload' && (
             <div>
@@ -1496,6 +2327,10 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
               {currentView === 'notice-requirements' && renderDropdownManagement(
                 'Notice Requirements Management',
                 'Manage notice requirement options (30 Days, 60 Days, 90 Days).'
+              )}
+              {currentView === 'commitment-types' && renderDropdownManagement(
+                'Commitment Types Management',
+                'Manage commitment type options for hybrid fees (Manager Monthly, Lifestyle Monthly, Assistant Monthly, Fixed Compensation).'
               )}
               {/* Stakeholder Dropdowns */}
               {currentView === 'stakeholder-types' && renderStakeholderTypesManagement()}

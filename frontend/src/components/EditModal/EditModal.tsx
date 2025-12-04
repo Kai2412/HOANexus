@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { PlacesAutocomplete } from '../PlacesAutocomplete';
@@ -44,6 +44,7 @@ export interface FieldConfig {
   label: string;
   type: 'text' | 'date' | 'select' | 'select-with-input' | 'number' | 'boolean' | 'textarea' | 'places-autocomplete' | 'day';
   required?: boolean;
+  disabled?: boolean; // For disabling fields
   options?: { value: string; label: string }[]; // For select fields
   placeholder?: string;
   conditional?: {
@@ -54,7 +55,12 @@ export interface FieldConfig {
     min?: number;
     max?: number;
     pattern?: string;
-    custom?: (value: any) => string | null;
+    custom?: (value: any, formData?: Record<string, any>) => string | null;
+  };
+  // Conditional requirement: field is required when another field has a specific value
+  conditionalRequired?: {
+    dependsOn: string;
+    requiredWhen: any;
   };
 }
 
@@ -75,6 +81,7 @@ const FieldRenderer: React.FC<{
   field: FieldConfig;
   value: any;
   onChange: (value: any) => void;
+  onBlur?: () => void;
   error?: string;
   onFieldChange?: (key: string, value: any, options?: { skipPendingReset?: boolean }) => void;
   onAddressSelection?: (fieldKey: string, formattedAddress: string, updates: Record<string, string>) => void;
@@ -85,6 +92,7 @@ const FieldRenderer: React.FC<{
   field,
   value,
   onChange,
+  onBlur,
   error,
   onFieldChange,
   onAddressSelection,
@@ -113,9 +121,15 @@ const FieldRenderer: React.FC<{
           <select
             value={value ?? ''}
             onChange={handleChange}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
+            onBlur={onBlur}
+            disabled={field.disabled}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              error 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              field.disabled ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
             <option value="" disabled hidden>
               {field.placeholder || `Select ${field.label}`}
@@ -133,9 +147,15 @@ const FieldRenderer: React.FC<{
           <select
             value={value ?? ''}
             onChange={handleChange}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
+            onBlur={onBlur}
+            disabled={field.disabled}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              error 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              field.disabled ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
             <option value="" disabled hidden>
               {field.placeholder || `Select ${field.label}`}
@@ -153,11 +173,17 @@ const FieldRenderer: React.FC<{
           <textarea
             value={value || ''}
             onChange={handleChange}
+            onBlur={onBlur}
             placeholder={field.placeholder}
             rows={3}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
+            disabled={field.disabled}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              error 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              field.disabled ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           />
         );
 
@@ -182,8 +208,11 @@ const FieldRenderer: React.FC<{
             type="date"
             value={value ? new Date(value).toISOString().split('T')[0] : ''}
             onChange={handleChange}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+            onBlur={onBlur}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              error 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
             } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
           />
         );
@@ -213,8 +242,11 @@ const FieldRenderer: React.FC<{
             type="date"
             value={dateValue}
             onChange={handleDayChange}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+            onBlur={onBlur}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              error 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
             } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
           />
         );
@@ -323,10 +355,16 @@ const FieldRenderer: React.FC<{
             type={field.type}
             value={value ?? ''}
             onChange={handleChange}
+            onBlur={onBlur}
             placeholder={field.placeholder}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
+            disabled={field.disabled}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              error 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${
+              field.disabled ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           />
         );
     }
@@ -359,6 +397,7 @@ const EditModal: React.FC<EditModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingAddress, setPendingAddress] = useState<{
     fieldKey: string;
     formatted: string;
@@ -370,16 +409,114 @@ const EditModal: React.FC<EditModalProps> = ({
     if (isOpen) {
       setFormData(initialData);
       setErrors({});
+      setSaveError(null);
       setPendingAddress(null);
     }
   }, [isOpen, initialData]);
+
+  // Re-validate dependent fields when their dependencies change
+  // Use a ref to track the last changed field to avoid infinite loops
+  const lastChangedFieldRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    if (lastChangedFieldRef.current) {
+      const changedFieldKey = lastChangedFieldRef.current;
+      lastChangedFieldRef.current = null; // Reset
+      
+      // Re-validate fields that depend on the changed field
+      fields.forEach(field => {
+        if (field.conditionalRequired?.dependsOn === changedFieldKey || field.conditional?.dependsOn === changedFieldKey) {
+          const fieldValue = formData[field.key];
+          validateField(field.key, fieldValue);
+        }
+      });
+    }
+  }, [formData]);
+
+  // Validate a single field and return error message
+  const validateSingleField = (field: FieldConfig, value: any): string | null => {
+    // Check if field is required (static or conditional)
+    let isRequired = field.required;
+    
+    // Check conditional requirement
+    if (field.conditionalRequired) {
+      const dependentValue = formData[field.conditionalRequired.dependsOn];
+      if (dependentValue === field.conditionalRequired.requiredWhen) {
+        isRequired = true;
+      }
+    }
+    
+    // Required field validation
+    if (isRequired && (!value || value === '' || (typeof value === 'number' && isNaN(value)))) {
+      return `${field.label} is required`;
+    }
+
+    // Number validation
+    if (field.type === 'number' && value !== '' && value !== null && value !== undefined) {
+      const numValue = typeof value === 'number' ? value : parseFloat(value);
+      if (isNaN(numValue)) {
+        return `${field.label} must be a valid number`;
+      }
+      if (field.validation?.min !== undefined && numValue < field.validation.min) {
+        return `${field.label} must be at least ${field.validation.min}`;
+      }
+      if (field.validation?.max !== undefined && numValue > field.validation.max) {
+        return `${field.label} must be at most ${field.validation.max}`;
+      }
+    }
+
+    // Custom validation (pass formData for context)
+    if (field.validation?.custom) {
+      const customError = field.validation.custom(value, formData);
+      if (customError) {
+        return customError;
+      }
+    }
+
+    return null;
+  };
+
+  // Validate a single field (updates errors state)
+  const validateField = (fieldKey: string, value: any) => {
+    const field = fields.find(f => f.key === fieldKey);
+    if (!field) return;
+
+    // Skip validation for conditionally hidden fields
+    if (field.conditional) {
+      const dependentValue = formData[field.conditional.dependsOn];
+      if (dependentValue !== field.conditional.showWhen) {
+        // Field is hidden, clear any errors
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors[fieldKey];
+          return newErrors;
+        });
+        return;
+      }
+    }
+
+    const fieldError = validateSingleField(field, value);
+    setErrors(prev => ({
+      ...prev,
+      [fieldKey]: fieldError || ''
+    }));
+  };
+
+  // Handle field blur (validate when user leaves field)
+  const handleFieldBlur = (fieldKey: string) => {
+    const value = formData[fieldKey];
+    validateField(fieldKey, value);
+  };
 
   // Handle field value changes
   const handleFieldChange = (
     fieldKey: string,
     value: any,
-    options: { skipPendingReset?: boolean } = {}
+    options: { skipPendingReset?: boolean; validateOnChange?: boolean } = {}
   ) => {
+    // Track which field changed for dependent field re-validation
+    lastChangedFieldRef.current = fieldKey;
+    
     setFormData(prev => ({
       ...prev,
       [fieldKey]: value
@@ -393,13 +530,19 @@ const EditModal: React.FC<EditModalProps> = ({
       setPendingAddress(null);
     }
 
-    // Clear error when user starts typing
+    // Clear error when user starts typing (optimistic clearing)
     if (errors[fieldKey]) {
       setErrors(prev => ({
         ...prev,
         [fieldKey]: ''
       }));
     }
+    
+    // Trigger real-time validation if enabled
+    if (options.validateOnChange) {
+      validateField(fieldKey, value);
+    }
+    // Note: Dependent fields will be re-validated via useEffect when formData updates
   };
 
   const handleAddressSelection = (
@@ -430,25 +573,23 @@ const EditModal: React.FC<EditModalProps> = ({
 
   const clearPendingAddress = () => setPendingAddress(null);
 
-  // Validate form
+  // Validate form (used on save click - validates all fields)
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
     fields.forEach(field => {
-      const value = formData[field.key];
-      
-      // Required field validation
-      if (field.required && (!value || value === '')) {
-        newErrors[field.key] = `${field.label} is required`;
-        return;
-      }
-
-      // Custom validation
-      if (field.validation?.custom && value) {
-        const customError = field.validation.custom(value);
-        if (customError) {
-          newErrors[field.key] = customError;
+      // Skip validation for conditionally hidden fields
+      if (field.conditional) {
+        const dependentValue = formData[field.conditional.dependsOn];
+        if (dependentValue !== field.conditional.showWhen) {
+          return; // Skip validation for hidden fields
         }
+      }
+      
+      const value = formData[field.key];
+      const fieldError = validateSingleField(field, value);
+      if (fieldError) {
+        newErrors[field.key] = fieldError;
       }
     });
 
@@ -462,12 +603,15 @@ const EditModal: React.FC<EditModalProps> = ({
       return;
     }
 
+    setSaveError(null); // Clear previous errors
     try {
       await onSave(formData);
       onClose();
     } catch (error) {
       logger.error('Save failed', 'EditModal', undefined, error as Error);
-      // Error handling will be done by the parent component
+      // Display error message to user
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save. Please try again.';
+      setSaveError(errorMessage);
     }
   };
 
@@ -512,7 +656,7 @@ const EditModal: React.FC<EditModalProps> = ({
                     as="h3"
                     className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100"
                   >
-                    Edit {title}
+                    {title.startsWith('Add ') || title.startsWith('New ') ? title : `Edit ${title}`}
                   </Dialog.Title>
                   <button
                     onClick={handleCancel}
@@ -538,16 +682,24 @@ const EditModal: React.FC<EditModalProps> = ({
                         key={field.key}
                         field={field}
                         value={formData[field.key]}
-                      onChange={(value) => handleFieldChange(field.key, value)}
+                        onChange={(value) => handleFieldChange(field.key, value, { validateOnChange: true })}
+                        onBlur={() => handleFieldBlur(field.key)}
                         error={errors[field.key]}
-                      onFieldChange={(key, value, options) => handleFieldChange(key, value, options)}
-                      onAddressSelection={handleAddressSelection}
-                      pendingAddress={pendingAddress}
-                      onApplyPendingAddress={applyPendingAddress}
-                      onClearPendingAddress={clearPendingAddress}
+                        onFieldChange={(key, value, options) => handleFieldChange(key, value, options)}
+                        onAddressSelection={handleAddressSelection}
+                        pendingAddress={pendingAddress}
+                        onApplyPendingAddress={applyPendingAddress}
+                        onClearPendingAddress={clearPendingAddress}
                       />
                     );
                   })}
+                  
+                  {/* Save Error Display */}
+                  {saveError && (
+                    <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                      <p className="text-sm text-red-800 dark:text-red-200">{saveError}</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

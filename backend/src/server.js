@@ -17,6 +17,9 @@ const stakeholderRoutes = require('./routes/stakeholderRoutes');
 const managementFeeRoutes = require('./routes/managementFeeRoutes');
 const billingInformationRoutes = require('./routes/billingInformationRoutes');
 const boardInformationRoutes = require('./routes/boardInformationRoutes');
+const feeMasterRoutes = require('./routes/feeMasterRoutes');
+const communityFeeVarianceRoutes = require('./routes/communityFeeVarianceRoutes');
+const commitmentFeesRoutes = require('./routes/commitmentFeesRoutes');
 // const amenityRoutes = require('./routes/amenityRoutes'); // Temporarily disabled - will be rebuilt with new table
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -24,6 +27,9 @@ const ticketRoutes = require('./routes/ticketRoutes');
 const managementTeamRoutes = require('./routes/managementTeamRoutes');
 const dynamicDropChoicesRoutes = require('./routes/dynamicDropChoicesRoutes');
 const bulkUploadRoutes = require('./routes/bulkUploadRoutes');
+const folderRoutes = require('./routes/folderRoutes');
+const fileRoutes = require('./routes/fileRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
 
 // Import error handling utilities
 const { globalErrorHandler } = require('./utils/errorHandler');
@@ -37,15 +43,16 @@ const PORT = config.server.port;
 // Security middleware
 app.use(helmet());
 
-// Rate limiting
-const limiter = rateLimit(config.server.rateLimit);
-app.use(limiter);
-
-// CORS configuration
+// CORS configuration (must be before rate limiting for OPTIONS requests)
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
+    
+    // In development, allow all localhost origins
+    if (config.server.environment === 'development' && origin.includes('localhost')) {
+      return callback(null, true);
+    }
     
     if (config.server.cors.allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
@@ -53,8 +60,21 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: config.server.cors.credentials
+  credentials: config.server.cors.credentials,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
+
+// Rate limiting (after CORS to allow preflight requests)
+// Skip rate limiting for OPTIONS requests (CORS preflight)
+const limiter = rateLimit({
+  ...config.server.rateLimit,
+  skip: (req) => req.method === 'OPTIONS'
+});
+app.use(limiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: config.api.maxBodySize }));
@@ -81,12 +101,18 @@ app.use('/api/communities', communityRoutes);
 app.use('/api/management-fees', managementFeeRoutes);
 app.use('/api/billing-information', billingInformationRoutes);
 app.use('/api/board-information', boardInformationRoutes);
+app.use('/api/fee-master', feeMasterRoutes);
+app.use('/api/community-fee-variances', communityFeeVarianceRoutes);
+app.use('/api/commitment-fees', commitmentFeesRoutes);
 // app.use('/api/properties', propertyRoutes); // Temporarily disabled - will be rebuilt with new table
 app.use('/api/stakeholders', stakeholderRoutes);
 // app.use('/api/amenities', amenityRoutes); // Temporarily disabled - will be rebuilt with new table
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/dynamic-drop-choices', dynamicDropChoicesRoutes);
 app.use('/api/admin/bulk-upload', bulkUploadRoutes);
+app.use('/api/folders', folderRoutes);
+app.use('/api/files', fileRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 // Test database connection endpoint
 app.get('/api/test-db', async (req, res) => {

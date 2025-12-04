@@ -53,13 +53,6 @@ const Forms: React.FC<FormsProps> = ({ onBackToCommunity, onFormNavigation, sele
   const renderBreadcrumbs = () => {
     return (
       <div className="flex items-center space-x-2 text-sm">
-        <button
-          onClick={() => handleBreadcrumbClick('community')}
-          className="text-secondary hover:text-primary transition-colors"
-        >
-          Community Info
-        </button>
-        <span className="text-tertiary">&gt;</span>
         <span className="text-primary font-medium">Forms</span>
       </div>
     );

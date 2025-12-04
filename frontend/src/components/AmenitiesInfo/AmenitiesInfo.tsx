@@ -11,6 +11,8 @@ import {
 // import amenityService from '../../services/amenityService'; // Temporarily disabled - using placeholder data
 import AmenityDetailsModal from './AmenityDetailsModal';
 import type { Community, Amenity } from '../../types';
+import InfoViewTemplate from '../InfoViewTemplate';
+import { SearchResultsIndicator } from '../CommunitySearchBar';
 
 interface AmenitiesInfoProps {
   community: Community;
@@ -353,96 +355,120 @@ const AmenitiesInfo: React.FC<AmenitiesInfoProps> = ({ community }) => {
     (amenity.Description && amenity.Description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-royal-600 mx-auto mb-4"></div>
-          <p className="text-secondary">Loading amenities...</p>
-        </div>
-      </div>
-    );
-  }
+  const hasSearchResults = searchTerm.trim().length > 0;
 
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <BuildingLibraryIcon className="w-12 h-12 text-tertiary mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-primary mb-2">Error Loading Amenities</h3>
-          <p className="text-secondary mb-4">{error}</p>
-          <button
-            onClick={loadAmenities}
-            className="px-4 py-2 bg-royal-600 text-white rounded-lg hover:bg-royal-700 transition-colors"
-          >
-            Try Again
-          </button>
+  // Build header content
+  const headerContent = (
+    <>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-primary mb-2">Community Amenities</h1>
+          <p className="text-secondary">
+            {filteredAmenities.length} {filteredAmenities.length === 1 ? 'amenity' : 'amenities'} available
+          </p>
+        </div>
+        <div className="w-full md:w-80">
+          <div className="relative">
+            <div className="absolute left-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <MagnifyingGlassIcon className="w-5 h-5 text-tertiary" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search amenities..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchTerm('');
+                }
+              }}
+              className="w-full pl-12 pr-12 py-3 border border-primary rounded-lg bg-surface text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-royal-600 focus:border-royal-600 transition-all"
+              autoComplete="off"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-tertiary hover:text-primary transition-colors"
+                aria-label="Clear search"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    );
-  }
+      {hasSearchResults && (
+        <SearchResultsIndicator 
+          searchTerm={searchTerm} 
+          resultCount={filteredAmenities.length} 
+          onClear={() => setSearchTerm('')} 
+        />
+      )}
+    </>
+  );
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-2xl font-bold text-primary">Community Amenities</h2>
-            <p className="text-secondary mt-1">
-              {filteredAmenities.length} amenities available
-            </p>
+    <InfoViewTemplate
+      header={headerContent}
+      hasSearchResults={hasSearchResults}
+      maxHeightOffset={300}
+    >
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-royal-600 mx-auto mb-4"></div>
+            <p className="text-secondary">Loading amenities...</p>
           </div>
         </div>
+      )}
 
-        {/* Search Bar */}
-        <div className="relative">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-tertiary" />
-          <input
-            type="text"
-            placeholder="Search amenities..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-primary rounded-lg bg-surface text-primary placeholder-tertiary focus:border-royal-500 focus:ring-1 focus:ring-royal-500 focus:outline-none theme-transition"
-          />
-          {searchTerm && (
+      {/* Error State */}
+      {error && !loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <BuildingLibraryIcon className="w-12 h-12 text-tertiary mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-primary mb-2">Error Loading Amenities</h3>
+            <p className="text-secondary mb-4">{error}</p>
             <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-tertiary hover:text-primary"
+              onClick={loadAmenities}
+              className="px-4 py-2 bg-royal-600 text-white rounded-lg hover:bg-royal-700 transition-colors"
             >
-              <XMarkIcon className="w-5 h-5" />
+              Try Again
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Amenities Grid */}
-      <div className="flex-1 overflow-auto">
-        {filteredAmenities.length === 0 ? (
-          <div className="text-center py-12">
-            <BuildingLibraryIcon className="w-16 h-16 text-tertiary mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-primary mb-2">
-              {searchTerm ? 'No matching amenities found' : 'No amenities available'}
-            </h3>
-            <p className="text-secondary">
-              {searchTerm 
-                ? 'Try adjusting your search terms'
-                : 'This community does not have any amenities configured yet.'
-              }
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredAmenities.map((amenity) => (
-              <AmenityCard
-                key={amenity.AmenityID}
-                amenity={amenity}
-                onClick={handleAmenityClick}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Amenities Content */}
+      {!loading && !error && (
+        <>
+          {filteredAmenities.length === 0 ? (
+            <div className="text-center py-12">
+              <BuildingLibraryIcon className="w-16 h-16 text-tertiary mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-primary mb-2">
+                {searchTerm ? 'No matching amenities found' : 'No amenities available'}
+              </h3>
+              <p className="text-secondary">
+                {searchTerm 
+                  ? 'Try adjusting your search terms'
+                  : 'This community does not have any amenities configured yet.'
+                }
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredAmenities.map((amenity) => (
+                <AmenityCard
+                  key={amenity.AmenityID}
+                  amenity={amenity}
+                  onClick={handleAmenityClick}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       {/* Amenity Details Modal */}
       <AmenityDetailsModal
@@ -450,7 +476,7 @@ const AmenitiesInfo: React.FC<AmenitiesInfoProps> = ({ community }) => {
         onClose={handleCloseModal}
         amenity={selectedAmenity}
       />
-    </div>
+    </InfoViewTemplate>
   );
 };
 

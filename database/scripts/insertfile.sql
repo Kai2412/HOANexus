@@ -160,6 +160,49 @@ PRINT 'Inserted board information for ' + CAST(@@ROWCOUNT AS varchar(10)) + ' co
 GO
 
 -- =============================================
+-- Insert Master Fees (cor_FeeMaster)
+-- =============================================
+-- Populate the master fee catalog with standard fees
+-- Only insert if fees don't already exist
+-- =============================================
+
+IF NOT EXISTS (SELECT 1 FROM dbo.cor_FeeMaster WHERE IsActive = 1)
+BEGIN
+    INSERT INTO dbo.cor_FeeMaster (FeeName, DefaultAmount, DisplayOrder, IsActive, CreatedOn)
+    VALUES
+        ('Copies', 0.20, 1, 1, SYSUTCDATETIME()),
+        ('Envelopes', 0.35, 2, 1, SYSUTCDATETIME()),
+        ('Coupons', 10.00, 3, 1, SYSUTCDATETIME()),
+        ('Handling: Mailed Correspondence', 1.00, 4, 1, SYSUTCDATETIME()),
+        ('Handling: E-Statements', 1.25, 5, 1, SYSUTCDATETIME()),
+        ('Handling: Payables', 2.50, 6, 1, SYSUTCDATETIME()),
+        ('Handling: Physical Checks', 2.50, 7, 1, SYSUTCDATETIME()),
+        ('Handling: Rushed Payables', 25.00, 8, 1, SYSUTCDATETIME()),
+        ('Handling: Returned Mail', 10.00, 9, 1, SYSUTCDATETIME()),
+        ('Handling: Certified Mail', 10.00, 10, 1, SYSUTCDATETIME()),
+        ('Handling: Deed Restriction Letters', 2.00, 11, 1, SYSUTCDATETIME()),
+        ('Postage', 5.00, 12, 1, SYSUTCDATETIME()),
+        ('Amenity Access Device Processing', 20.00, 13, 1, SYSUTCDATETIME()),
+        ('Gate Administration', 45.00, 14, 1, SYSUTCDATETIME()),
+        ('1099 Processing', 40.00, 15, 1, SYSUTCDATETIME()),
+        ('Tax Return', 375.00, 16, 1, SYSUTCDATETIME()),
+        ('State Governance', 250.00, 17, 1, SYSUTCDATETIME()),
+        ('Tech Fee', 45.00, 18, 1, SYSUTCDATETIME()),
+        ('Special Assessment Administration', 150.00, 19, 1, SYSUTCDATETIME()),
+        ('Payment Plan Administration', 25.00, 20, 1, SYSUTCDATETIME()),
+        ('Petty Cash Account', 50.00, 21, 1, SYSUTCDATETIME()),
+        ('Board Controlled Account', 50.00, 22, 1, SYSUTCDATETIME()),
+        ('Transition Fee', 650.00, 23, 1, SYSUTCDATETIME());
+    
+    PRINT 'Inserted ' + CAST(@@ROWCOUNT AS varchar(10)) + ' master fees.';
+END
+ELSE
+BEGIN
+    PRINT 'Master fees already exist. Skipping insert.';
+END
+GO
+
+-- =============================================
 -- ADD YOUR INSERT STATEMENTS ABOVE
 -- =============================================
 

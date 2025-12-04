@@ -1,14 +1,14 @@
 # Current Database Schema
 
-**Last Updated**: 2025-01-XX  
+**Last Updated**: 2025-12-01  
 **Database Architecture**: Multi-tenant with Master + Client databases
 
 ## Overview
 
-This document describes the **actual current tables** in the HOA Nexus system. There are **9 core tables** across 2 databases:
+This document describes the **actual current tables** in the HOA Nexus system. There are **16 core tables** across 2 databases:
 
 - **Master Database** (`hoa_nexus_master`): 3 tables for multi-tenant organization and user management
-- **Client Database** (`hoa_nexus_testclient`): 6 tables for client-specific data
+- **Client Database** (`hoa_nexus_testclient`): 13 tables for client-specific data
 
 ---
 
@@ -142,11 +142,13 @@ This document describes the **actual current tables** in the HOA Nexus system. T
 - **Community**: `client-types`, `service-types`, `management-types`, `development-stages`, `acquisition-types`, `fee-types`, `billing-frequency`, `notice-requirements`
 - **Stakeholder**: `stakeholder-types`, `stakeholder-subtypes-resident`, `stakeholder-subtypes-staff`, `stakeholder-subtypes-vendor`, `preferred-contact-methods`, `status`, `access-levels`
 - **Tickets**: `ticket-statuses`
+- **Fee Management**: `commitment-types` (for hybrid fees: Manager Monthly, Lifestyle Monthly, Assistant Monthly, Fixed Compensation)
 
 **Relationships**:
 - Referenced by: `cor_Communities` (ClientTypeID, ServiceTypeID, ManagementTypeID, DevelopmentStageID, AcquisitionTypeID)
 - Referenced by: `cor_ManagementFees` (FeeTypeID)
 - Referenced by: `cor_BillingInformation` (BillingFrequencyID, NoticeRequirementID)
+- Referenced by: `cor_CommitmentFees` (CommitmentTypeID)
 
 ---
 
@@ -350,13 +352,297 @@ This document describes the **actual current tables** in the HOA Nexus system. T
 
 ----
 
+### 10. `cor_FeeMaster`
+
+**Purpose**: Master catalog of standard fees used across all communities.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `FeeMasterID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `FeeName` | nvarchar(200) | NOT NULL | Fee name (e.g., "Copies", "Envelopes") |
+| `DefaultAmount` | decimal(12,2) | NOT NULL | Default fee amount |
+| `DisplayOrder` | int | NOT NULL, DEFAULT 0 | Sort order for display |
+| `IsActive` | bit | NOT NULL, DEFAULT 1 | Soft deletion flag |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+
+**Indexes**:
+- Primary Key: `PK_cor_FeeMaster` on `FeeMasterID`
+- Index: `IX_cor_FeeMaster_DisplayOrder` on `(DisplayOrder, IsActive)`
+
+**Relationships**:
+- Referenced by: `cor_CommunityFeeVariances.FeeMasterID`
+
+**Seed Data**: Populated with 23 standard fees including Copies, Envelopes, Coupons, Handling fees, Postage, Tax Return, etc.
+
+----
+
+### 11. `cor_CommunityFeeVariances`
+
+**Purpose**: Allows communities to override master fees or mark them as "Not Billed" or "Custom".
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `CommunityFeeVarianceID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `CommunityID` | uniqueidentifier | NOT NULL, FK → cor_Communities | Associated community |
+| `FeeMasterID` | uniqueidentifier | NOT NULL, FK → cor_FeeMaster | Master fee being overridden |
+| `VarianceType` | nvarchar(50) | NOT NULL, CHECK | Type: 'Standard', 'Not Billed', 'Custom' |
+| `CustomAmount` | decimal(12,2) | NULL, CHECK | Custom amount (required if VarianceType = 'Custom') |
+| `Notes` | nvarchar(500) | NULL | Additional notes |
+| `IsActive` | bit | NOT NULL, DEFAULT 1 | Soft deletion flag |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+
+**Indexes**:
+- Primary Key: `PK_cor_CommunityFeeVariances` on `CommunityFeeVarianceID`
+- Foreign Keys:
+  - `FK_cor_CommunityFeeVariances_Community` → `cor_Communities(CommunityID)`
+  - `FK_cor_CommunityFeeVariances_FeeMaster` → `cor_FeeMaster(FeeMasterID)`
+- Check Constraints:
+  - `CK_cor_CommunityFeeVariances_VarianceType` ensures value is 'Standard', 'Not Billed', or 'Custom'
+  - `CK_cor_CommunityFeeVariances_CustomAmount` ensures CustomAmount is NOT NULL when VarianceType = 'Custom'
+- Unique: `UQ_cor_CommunityFeeVariances_Community_Fee` on `(CommunityID, FeeMasterID)` WHERE `IsActive = 1`
+- Index: `IX_cor_CommunityFeeVariances_CommunityID` on `CommunityID`
+- Index: `IX_cor_CommunityFeeVariances_FeeMasterID` on `FeeMasterID`
+
+**Relationships**:
+- References: `cor_Communities` via `CommunityID`
+- References: `cor_FeeMaster` via `FeeMasterID`
+
+**Business Logic**:
+- **Standard**: Uses master fee default amount
+- **Not Billed**: Fee is not charged to this community
+- **Custom**: Uses `CustomAmount` instead of default
+
+----
+
+### 12. `cor_CommitmentFees`
+
+**Purpose**: Tracks HOA commitment fees by commitment type (hybrid fees). Each community can have multiple fees per commitment type.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `CommitmentFeeID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `CommunityID` | uniqueidentifier | NOT NULL, FK → cor_Communities | Associated community |
+| `CommitmentTypeID` | uniqueidentifier | NOT NULL, FK → cor_DynamicDropChoices | Commitment type (e.g., "Manager Monthly", "Lifestyle Monthly") |
+| `EntryType` | nvarchar(50) | NOT NULL, DEFAULT 'Compensation', CHECK | Type: 'Compensation' (has Value) or 'Commitment' (no Value) |
+| `FeeName` | nvarchar(200) | NOT NULL | Fee/commitment name |
+| `Value` | decimal(12,2) | NULL | Amount (required if EntryType = 'Compensation') |
+| `Notes` | nvarchar(500) | NULL | Additional notes |
+| `IsActive` | bit | NOT NULL, DEFAULT 1 | Soft deletion flag |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+
+**Indexes**:
+- Primary Key: `PK_cor_CommitmentFees` on `CommitmentFeeID`
+- Foreign Keys:
+  - `FK_cor_CommitmentFees_Community` → `cor_Communities(CommunityID)`
+  - `FK_cor_CommitmentFees_CommitmentType` → `cor_DynamicDropChoices(ChoiceID)`
+- Check Constraints:
+  - `CK_cor_CommitmentFees_EntryType` ensures value is 'Compensation' or 'Commitment'
+- Index: `IX_cor_CommitmentFees_CommunityID` on `CommunityID`
+- Index: `IX_cor_CommitmentFees_CommitmentTypeID` on `CommitmentTypeID`
+
+**Relationships**:
+- References: `cor_Communities` via `CommunityID`
+- References: `cor_DynamicDropChoices` via `CommitmentTypeID` (GroupID = 'commitment-types')
+
+**Business Logic**:
+- Fees are grouped by `CommitmentTypeID` for display
+- **Compensation** (`EntryType = 'Compensation'`): 
+  - `Value` is **REQUIRED** and must be a valid decimal number
+  - Represents monetary compensation (e.g., "$5,000/month")
+- **Commitment** (`EntryType = 'Commitment'`): 
+  - `Value` is **NULL** (not used)
+  - Represents a commitment description without monetary value (e.g., "40 hours manager time")
+- Validation: Backend enforces that `Value` is required for Compensation entries and must be NULL for Commitment entries
+
+----
+
+### 13. `cor_Folders`
+
+**Purpose**: Stores folder structure for file organization. Supports Community, Corporate, and Global folder types.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `FolderID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `CommunityID` | uniqueidentifier | NULL, FK → cor_Communities | NULL = Corporate/Global folder, NOT NULL = Community folder |
+| `ParentFolderID` | uniqueidentifier | NULL, FK → cor_Folders | NULL = root folder, NOT NULL = subfolder |
+| `FolderName` | nvarchar(255) | NOT NULL | Folder name |
+| `FolderPath` | nvarchar(1000) | NULL | Full path (e.g., "/Invoices/2024/January") |
+| `FolderType` | nvarchar(50) | NOT NULL, DEFAULT 'Community', CHECK | Type: 'Community', 'Corporate', or 'Global' |
+| `DisplayOrder` | int | NOT NULL, DEFAULT 0 | Sort order for display |
+| `IsActive` | bit | NOT NULL, DEFAULT 1 | Soft deletion flag |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+
+**Indexes**:
+- Primary Key: `PK_cor_Folders` on `FolderID`
+- Foreign Keys:
+  - `FK_cor_Folders_Community` → `cor_Communities(CommunityID)` (nullable)
+  - `FK_cor_Folders_ParentFolder` → `cor_Folders(FolderID)` (self-referencing)
+- Check Constraints:
+  - `CK_cor_Folders_FolderType` ensures value is 'Community', 'Corporate', or 'Global'
+  - `CK_cor_Folders_FolderType_CommunityID` ensures Community folders have CommunityID, Corporate/Global do not
+- Index: `IX_cor_Folders_CommunityID` on `CommunityID`
+- Index: `IX_cor_Folders_ParentFolderID` on `ParentFolderID`
+- Index: `IX_cor_Folders_FolderType` on `FolderType`
+
+**Relationships**:
+- References: `cor_Communities` via `CommunityID` (optional, NULL for Corporate/Global folders)
+- Self-referencing: `ParentFolderID` → `cor_Folders(FolderID)`
+- Referenced by: `cor_Files.FolderID`
+
+**Business Logic**:
+- **Community Folders**: `FolderType = 'Community'`, `CommunityID IS NOT NULL` - specific to one community (created in Admin panel)
+- **Corporate Folders**: `FolderType = 'Corporate'`, `CommunityID IS NULL` - organization-wide, for mass imports/exports and corporate storage (created in Corporate FileBrowser)
+- **Global Folders**: `FolderType = 'Global'`, `CommunityID IS NULL` - visible to all communities (created in Admin panel, legacy)
+- **Root Folders**: `ParentFolderID IS NULL` - top-level folders
+- **Subfolders**: `ParentFolderID = parentFolderID` - nested folders
+- Corporate and Community folders/files are completely separated and never mix
+
+----
+
+### 14. `cor_Files`
+
+**Purpose**: Stores file metadata. Actual files are stored in blob storage (Azurite for local dev, Azure Blob Storage for production).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `FileID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `FolderID` | uniqueidentifier | NULL, FK → cor_Folders | NULL = root level file, NOT NULL = file in folder |
+| `CommunityID` | uniqueidentifier | NULL, FK → cor_Communities | NULL = Corporate file, NOT NULL = Community file |
+| `FileName` | nvarchar(255) | NOT NULL | Original filename |
+| `FileNameStored` | nvarchar(255) | NOT NULL | Filename as stored (with GUID or sanitized) |
+| `FilePath` | nvarchar(1000) | NOT NULL | Full path to file in blob storage |
+| `FileSize` | bigint | NOT NULL | Size in bytes |
+| `FolderType` | nvarchar(50) | NOT NULL, DEFAULT 'Community', CHECK | Type: 'Community' or 'Corporate' |
+| `MimeType` | nvarchar(100) | NULL | MIME type (e.g., "application/pdf", "image/jpeg") |
+| `FileType` | nvarchar(50) | NULL | File type category (e.g., "invoice", "document", "image") |
+| `IsActive` | bit | NOT NULL, DEFAULT 1 | Soft deletion flag |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+
+**Indexes**:
+- Primary Key: `PK_cor_Files` on `FileID`
+- Foreign Keys:
+  - `FK_cor_Files_Folder` → `cor_Folders(FolderID)` (nullable)
+  - `FK_cor_Files_Community` → `cor_Communities(CommunityID)` (nullable)
+- Check Constraints:
+  - `CK_cor_Files_FolderType` ensures value is 'Community' or 'Corporate'
+  - `CK_cor_Files_FolderType_CommunityID` ensures Community files have CommunityID, Corporate files do not
+- Index: `IX_cor_Files_FolderID` on `FolderID`
+- Index: `IX_cor_Files_CommunityID` on `CommunityID`
+- Index: `IX_cor_Files_FolderType` on `FolderType`
+- Index: `IX_cor_Files_FileType` on `FileType`
+
+**Relationships**:
+- References: `cor_Folders` via `FolderID` (optional, NULL for root-level files)
+- References: `cor_Communities` via `CommunityID` (optional, NULL for Corporate files)
+
+**Business Logic**:
+- Files are **hard deleted** (not soft deleted) - both database record and blob storage file are removed
+- **Community Files**: `FolderType = 'Community'`, `CommunityID IS NOT NULL` - tied to a specific community
+- **Corporate Files**: `FolderType = 'Corporate'`, `CommunityID IS NULL` - organization-wide, for mass imports/exports and corporate storage
+- Files can be at root level (`FolderID IS NULL`) or in a folder (`FolderID = folderID`)
+- Supported file types: PDFs, Images, Documents
+- File size limit: 25-30MB per file
+- Corporate and Community files are completely separated and never mix
+
+----
+
+### 15. `cor_Invoices`
+
+**Purpose**: Invoice header/master records. Simple snapshot-based system for proof-of-concept invoice generation.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `InvoiceID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `CommunityID` | uniqueidentifier | NOT NULL, FK → cor_Communities | Associated community |
+| `InvoiceNumber` | varchar(50) | NOT NULL, UNIQUE | Global invoice number (e.g., "INV-2025-0001") |
+| `InvoiceDate` | date | NOT NULL | Date invoice was created |
+| `Total` | decimal(12,2) | NOT NULL | Sum of all charges |
+| `Status` | varchar(50) | NOT NULL, DEFAULT 'Draft' | Invoice status (Draft, Sent, Paid, Overdue, Cancelled, Void) |
+| `FileID` | uniqueidentifier | NULL, FK → cor_Files | Link to generated PDF file |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+
+**Indexes**:
+- Primary Key: `PK_cor_Invoices` on `InvoiceID`
+- Foreign Keys:
+  - `FK_cor_Invoices_Community` → `cor_Communities(CommunityID)`
+  - `FK_cor_Invoices_File` → `cor_Files(FileID)`
+- Unique: `UQ_cor_Invoices_InvoiceNumber` on `InvoiceNumber`
+- Index: `IX_cor_Invoices_CommunityID` on `CommunityID`
+- Index: `IX_cor_Invoices_InvoiceDate` on `InvoiceDate`
+- Index: `IX_cor_Invoices_Status` on `Status`
+
+**Relationships**:
+- References: `cor_Communities` via `CommunityID`
+- References: `cor_Files` via `FileID` (optional, links to PDF)
+- Referenced by: `cor_InvoiceCharges.InvoiceID`
+
+**Business Logic**:
+- Invoice numbers are globally unique (INV-YYYY-#### format)
+- Total is calculated from sum of all associated charges
+- FileID links to the generated PDF stored in file storage
+- Status tracks invoice lifecycle (Draft → Sent → Paid)
+
+----
+
+### 16. `cor_InvoiceCharges`
+
+**Purpose**: Individual line items on invoices. Snapshot-based (stores description and amount as text/decimal, no foreign keys to fee tables).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `InvoiceChargeID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `InvoiceID` | uniqueidentifier | NOT NULL, FK → cor_Invoices | Parent invoice |
+| `Description` | varchar(200) | NOT NULL | Line item description (snapshot of fee name) |
+| `Amount` | decimal(12,2) | NOT NULL | Charge amount |
+| `DisplayOrder` | int | NOT NULL, DEFAULT 0 | Order on invoice |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+
+**Indexes**:
+- Primary Key: `PK_cor_InvoiceCharges` on `InvoiceChargeID`
+- Foreign Key: `FK_cor_InvoiceCharges_Invoice` → `cor_Invoices(InvoiceID)` ON DELETE CASCADE
+- Index: `IX_cor_InvoiceCharges_InvoiceID` on `InvoiceID`
+- Index: `IX_cor_InvoiceCharges_DisplayOrder` on `(InvoiceID, DisplayOrder)`
+
+**Relationships**:
+- References: `cor_Invoices` via `InvoiceID`
+- Charges are deleted when invoice is deleted (CASCADE)
+
+**Business Logic**:
+- Snapshot-based: stores description and amount as-is at time of invoice creation
+- No foreign keys to fee tables (ManagementFees, FeeMaster, CommitmentFees)
+- DisplayOrder controls line item order on invoice
+- Amounts are summed to calculate invoice Total
+
+----
+
 ## Key Design Patterns
 
 ### 1. **GUID Primary Keys**
 All tables use `uniqueidentifier` (GUID) as primary keys with `DEFAULT NEWID()`.
 
 ### 2. **Soft Deletion**
-All tables use `IsActive` bit field for soft deletion instead of physical deletion.
+Most tables use `IsActive` bit field for soft deletion instead of physical deletion. **Exception**: `cor_Files` uses hard deletion (both database record and blob storage file are permanently removed).
 
 ### 3. **Audit Fields**
 All tables include:
@@ -390,7 +676,9 @@ Master Database (hoa_nexus_master)
 Client Database (hoa_nexus_testclient)
 ├── cor_DynamicDropChoices
 │   ├── Referenced by: cor_Communities (5 FK fields)
-│   └── Referenced by: cor_ManagementFees (FeeTypeID)
+│   ├── Referenced by: cor_ManagementFees (FeeTypeID)
+│   ├── Referenced by: cor_BillingInformation (BillingFrequencyID, NoticeRequirementID)
+│   └── Referenced by: cor_CommitmentFees (CommitmentTypeID)
 │
 ├── cor_Stakeholders
 │   ├── CommunityID → cor_Communities
@@ -401,7 +689,12 @@ Client Database (hoa_nexus_testclient)
 │   ├── Referenced by: cor_Stakeholders.CommunityID
 │   ├── Referenced by: cor_ManagementFees.CommunityID
 │   ├── Referenced by: cor_BillingInformation.CommunityID
-│   └── Referenced by: cor_BoardInformation.CommunityID
+│   ├── Referenced by: cor_BoardInformation.CommunityID
+│   ├── Referenced by: cor_CommunityFeeVariances.CommunityID
+│   ├── Referenced by: cor_CommitmentFees.CommunityID
+│   ├── Referenced by: cor_Folders.CommunityID (optional, NULL for global)
+│   ├── Referenced by: cor_Files.CommunityID
+│   └── Referenced by: cor_Invoices.CommunityID
 │
 ├── cor_ManagementFees
 │   ├── CommunityID → cor_Communities
@@ -409,10 +702,38 @@ Client Database (hoa_nexus_testclient)
 │
 ├── cor_BillingInformation
 │   ├── CommunityID → cor_Communities
-│   └── BillingFrequencyID → cor_DynamicDropChoices
+│   ├── BillingFrequencyID → cor_DynamicDropChoices
+│   └── NoticeRequirementID → cor_DynamicDropChoices
 │
-└── cor_BoardInformation
-    └── CommunityID → cor_Communities
+├── cor_BoardInformation
+│   └── CommunityID → cor_Communities
+│
+├── cor_FeeMaster
+│   └── Referenced by: cor_CommunityFeeVariances.FeeMasterID
+│
+├── cor_CommunityFeeVariances
+│   ├── CommunityID → cor_Communities
+│   └── FeeMasterID → cor_FeeMaster
+│
+├── cor_CommitmentFees
+│   ├── CommunityID → cor_Communities
+│   └── CommitmentTypeID → cor_DynamicDropChoices
+│
+├── cor_Folders
+│   ├── CommunityID → cor_Communities (optional, NULL for global)
+│   └── ParentFolderID → cor_Folders (self-referencing)
+│
+├── cor_Files
+│   ├── FolderID → cor_Folders (optional, NULL for root)
+│   └── CommunityID → cor_Communities
+│
+├── cor_Invoices
+│   ├── CommunityID → cor_Communities
+│   ├── FileID → cor_Files (PDF link)
+│   └── Referenced by: cor_InvoiceCharges.InvoiceID
+│
+└── cor_InvoiceCharges
+    └── InvoiceID → cor_Invoices
 ```
 
 ---

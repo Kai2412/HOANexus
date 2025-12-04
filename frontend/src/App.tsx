@@ -14,16 +14,23 @@ function AppContent() {
   const { isLoading, message, subMessage } = useLoading()
   const { isAuthenticated, isLoading: authLoading, logout, mustChangePassword, changePassword } = useAuth()
   const [isCommunitySelectorExpanded, setIsCommunitySelectorExpanded] = useState(false)
-  const [currentOverlay, setCurrentOverlay] = useState<'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | null>(null)
+  const [currentOverlay, setCurrentOverlay] = useState<'community-info' | 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | null>('community-info')
   const [overlayParams, setOverlayParams] = useState<Record<string, any>>({})
   
   const toggleCommunitySelector = () => {
     setIsCommunitySelectorExpanded(!isCommunitySelectorExpanded)
   }
 
-  const handleOverlayNavigation = (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin', params: Record<string, any> = {}) => {
+  // Handle Community Info button click - switch to Community Info overlay
+  const handleCommunityInfoClick = () => {
+    setCurrentOverlay('community-info')
+    setOverlayParams({})
+  }
+
+  const handleOverlayNavigation = (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | 'invoice', params: Record<string, any> = {}) => {
     setCurrentOverlay(overlay)
     setOverlayParams(params)
+    // Keep navigation mode - overlays work on top of navigation mode
     
     // Auto-expand community selector when entering forms (desktop only)
     if (overlay === 'forms') {
@@ -55,14 +62,14 @@ function AppContent() {
   useEffect(() => {
     const handleAuthLogin = () => {
       // Reset to fresh state on login
-      setCurrentOverlay(null);
+      setCurrentOverlay('community-info');
       setOverlayParams({});
       setIsCommunitySelectorExpanded(false);
     };
 
     const handleAuthLogout = () => {
       // Reset to fresh state on logout
-      setCurrentOverlay(null);
+      setCurrentOverlay('community-info');
       setOverlayParams({});
       setIsCommunitySelectorExpanded(false);
     };
@@ -207,7 +214,10 @@ function AppContent() {
           className="bg-surface-secondary border-b border-primary theme-transition"
           style={{ gridArea: 'menu' }}
         >
-          <Menus onOverlayNavigation={handleOverlayNavigation} />
+          <Menus 
+            onOverlayNavigation={handleOverlayNavigation}
+            onCommunityInfoClick={handleCommunityInfoClick}
+          />
         </div>
 
         {/* Bottom Right - Information Container */}

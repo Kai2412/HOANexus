@@ -1,19 +1,16 @@
-import React, { useState } from 'react';
-import { Tab } from '@headlessui/react';
-import CommunityInfo from '../CommunityInfo/CommunityInfo';
-import ResidentInfo from '../ResidentInfo/ResidentInfo';
-import AmenitiesInfo from '../AmenitiesInfo/AmenitiesInfo';
+import React from 'react';
 import Directory from '../Directory/Directory';
 import AddStakeholder from '../Directory/AddStakeholder';
 import Forms from '../Forms/Forms';
 import Admin from '../Admin/Admin';
 import Tickets from '../Tickets';
+import Invoice from '../Invoice';
+import CommunityInfoOverlay from '../CommunityInfoOverlay';
 import type { Community } from '../../types';
-import { useCommunity } from '../../context';
 
 interface InformationContainerProps {
   selectedCommunity: Community | null;
-  currentOverlay?: 'directory' | 'add-stakeholder' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | null;
+  currentOverlay?: 'community-info' | 'directory' | 'add-stakeholder' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | 'invoice' | null;
   overlayParams?: Record<string, any>;
 }
 
@@ -22,17 +19,8 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
   currentOverlay = null,
   overlayParams = {}
 }) => {
-  const [selectedTab, setSelectedTab] = useState(0);
-  const { communities, updateSelectedCommunity } = useCommunity();
-
-  const tabs = [
-    { name: 'Community Info', component: CommunityInfo },
-    { name: 'Resident Info', component: ResidentInfo },
-    { name: 'Amenities', component: AmenitiesInfo }
-  ];
-
-  // Render overlay if active
-  if (currentOverlay) {
+  // Render specific overlays when requested
+  if (currentOverlay && currentOverlay !== 'community-info') {
     return (
       <div className="h-full bg-surface theme-transition">
         {currentOverlay === 'directory' && (
@@ -56,13 +44,6 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
               <div className="space-y-4">
                 {/* Breadcrumbs */}
                 <div className="flex items-center space-x-2 text-sm">
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('overlay:close'))}
-                    className="text-secondary hover:text-primary transition-colors"
-                  >
-                    Community Info
-                  </button>
-                  <span className="text-tertiary">&gt;</span>
                   <button
                     onClick={() => window.dispatchEvent(new CustomEvent('overlay:navigate', { detail: { overlay: 'directory' } }))}
                     className="text-secondary hover:text-primary transition-colors"
@@ -160,70 +141,23 @@ const InformationContainer: React.FC<InformationContainerProps> = ({
             />
           </div>
         )}
+        {currentOverlay === 'invoice' && (
+          <div className="h-full flex flex-col">
+            <Invoice 
+              onBack={() => {
+                window.dispatchEvent(new CustomEvent('overlay:close'));
+              }}
+            />
+          </div>
+        )}
       </div>
     );
   }
 
-  if (!selectedCommunity) {
-    return (
-      <div className="h-full flex items-center justify-center p-6 bg-surface theme-transition">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-primary mb-4">Select a Community</h2>
-          <p className="text-secondary">Choose a community from the left panel to view detailed information.</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Default overlay: Community Info (sidebar + cards)
   return (
-    <div className="h-full flex flex-col bg-surface theme-transition">
-      <Tab.Group selectedIndex={selectedTab} onChange={setSelectedTab}>
-        {/* Tab Navigation - Fixed Header */}
-        <div className="flex-shrink-0 border-b border-primary bg-surface shadow-sm theme-transition">
-          <Tab.List className="flex">
-            {tabs.map((tab) => (
-              <Tab
-                key={tab.name}
-                className={({ selected }) =>
-                  `flex-1 py-4 px-6 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-royal-500 focus:ring-inset theme-transition ${
-                    selected
-                      ? 'text-royal-600 dark:text-royal-400 border-b-2 border-royal-600 dark:border-royal-400 bg-royal-50 dark:bg-royal-900/20'
-                      : 'text-secondary hover:text-primary hover:bg-surface-secondary'
-                  }`
-                }
-              >
-                {tab.name}
-              </Tab>
-            ))}
-          </Tab.List>
-        </div>
-
-        {/* Tab Content - Scrollable Area */}
-        <div className="flex-1 min-h-0 bg-surface-secondary theme-transition">
-          <Tab.Panels className="h-full">
-            {/* Community Info Panel */}
-            <Tab.Panel className="h-full">
-              <div className="overflow-y-auto p-6" style={{ height: 'calc(100vh - 200px)' }}>
-                <CommunityInfo community={selectedCommunity} onCommunityUpdate={updateSelectedCommunity} />
-              </div>
-            </Tab.Panel>
-
-            {/* Resident Info Panel */}
-            <Tab.Panel className="h-full">
-              <div className="overflow-y-auto p-6" style={{ height: 'calc(100vh - 200px)' }}>
-                <ResidentInfo community={selectedCommunity} />
-              </div>
-            </Tab.Panel>
-
-            {/* Amenities Panel */}
-            <Tab.Panel className="h-full">
-              <div className="overflow-y-auto p-6" style={{ height: 'calc(100vh - 200px)' }}>
-                <AmenitiesInfo community={selectedCommunity} />
-              </div>
-            </Tab.Panel>
-          </Tab.Panels>
-        </div>
-      </Tab.Group>
+    <div className="h-full">
+      <CommunityInfoOverlay selectedCommunity={selectedCommunity} />
     </div>
   );
 };
