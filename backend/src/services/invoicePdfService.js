@@ -18,7 +18,7 @@ class InvoicePDFService {
    */
   static async findOrCreateInvoicesFolder(communityId) {
     try {
-      // First, try to find existing "Invoices" folder (Global folder)
+      // First, try to find existing "Invoices" folder (Corporate folder)
       const pool = await getConnection();
       const result = await pool.request()
         .query(`
@@ -31,7 +31,7 @@ class InvoicePDFService {
             FolderType
           FROM cor_Folders
           WHERE FolderName = 'Invoices'
-            AND FolderType = 'Global'
+            AND FolderType = 'Corporate'
             AND CommunityID IS NULL
             AND ParentFolderID IS NULL
             AND IsActive = 1
@@ -41,12 +41,12 @@ class InvoicePDFService {
         return result.recordset[0];
       }
 
-      // Create "Invoices" folder if it doesn't exist (Global folder)
+      // Create "Invoices" folder if it doesn't exist (Corporate folder)
       const newFolder = await Folder.create({
-        CommunityID: null, // Global folder
+        CommunityID: null, // Corporate folder
         ParentFolderID: null,
         FolderName: 'Invoices',
-        FolderType: 'Global', // Explicitly set as Global
+        FolderType: 'Corporate', // Corporate folder (appears in Corporate view)
         DisplayOrder: 0,
         CreatedBy: null
       });
@@ -91,14 +91,17 @@ class InvoicePDFService {
       const fileName = `${invoiceData.invoiceNumber}_${timestamp}.pdf`;
       const fileNameStored = fileName;
 
-      // Upload to blob storage
-      const blobPath = `communities/${communityId}/files/${invoicesFolder.FolderID}/${fileNameStored}`;
+      // Upload to blob storage (Corporate path, but linked to community in DB)
+      const blobPath = `corporate/files/${invoicesFolder.FolderID}/${fileNameStored}`;
       const fileUrl = await storageService.uploadFile(pdfBuffer, blobPath, 'application/pdf');
 
       // Create file record in database
+      // Note: FolderType is 'Global' but we want it to appear in Corporate view
+      // So we set FolderType to 'Corporate' but keep CommunityID for linking
       const fileRecord = await File.create({
         FolderID: invoicesFolder.FolderID,
-        CommunityID: communityId,
+        CommunityID: communityId, // Link to community for AI search
+        FolderType: 'Corporate', // Appears in Corporate file browser
         FileName: fileName,
         FileNameStored: fileNameStored,
         FilePath: fileUrl,
@@ -255,7 +258,7 @@ class InvoicePDFService {
    * @param {Object} monthFolder - Month folder object
    * @returns {Promise<Object>} File record from database
    */
-  static async generateAndSaveManagementFeeInvoice(communityData, feeData, invoiceDate, runDate, monthFolder) {
+  static async generateAndSaveManagementFeeInvoice(communityData, feeData, invoiceDate, runDate, monthFolder, communityId = null) {
     try {
       // Initialize storage service
       await storageService.initialize();
@@ -330,11 +333,20 @@ class InvoicePDFService {
         throw new Error(`Failed to upload invoice PDF to blob storage: ${uploadError.message}`);
       }
 
-      // Create file record in database (Corporate file, no CommunityID)
+      // Create file record in database
+      // Corporate file structure, but linked to community for AI search
+      logger.info('Creating file record in database', 'InvoicePDFService', {
+        communityCode: communityData.propertyCode,
+        communityId: communityId,
+        folderId: monthFolder.FolderID,
+        fileName: fileName,
+        fileUrl: fileUrl
+      });
+      
       const fileRecord = await File.create({
         FolderID: monthFolder.FolderID,
-        CommunityID: null, // Corporate file
-        FolderType: 'Corporate',
+        CommunityID: communityId || null, // Link to community if available
+        FolderType: 'Corporate', // Appears in Corporate file browser
         FileName: fileName,
         FileNameStored: fileNameStored,
         FilePath: fileUrl,
@@ -342,6 +354,11 @@ class InvoicePDFService {
         MimeType: 'application/pdf',
         FileType: 'invoice',
         CreatedBy: null
+      });
+      
+      logger.info('File record created successfully', 'InvoicePDFService', {
+        fileId: fileRecord.FileID,
+        communityCode: communityData.propertyCode
       });
 
       logger.info('Management fee invoice PDF generated and saved', 'InvoicePDFService', {

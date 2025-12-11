@@ -3,9 +3,10 @@ import React from 'react';
 interface MenusProps {
   onOverlayNavigation?: (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | 'invoice', params?: Record<string, any>) => void;
   onCommunityInfoClick?: () => void; // New: Callback for Community Info button
+  onAIAssistantClick?: () => void; // New: Callback for AI Assistant button
 }
 
-const Menus: React.FC<MenusProps> = ({ onOverlayNavigation, onCommunityInfoClick }) => {
+const Menus: React.FC<MenusProps> = ({ onOverlayNavigation, onCommunityInfoClick, onAIAssistantClick }) => {
   const handleButtonClick = (overlay: 'directory' | 'forms' | 'tickets' | 'reports' | 'admin' | 'invoice') => {
     if (!onOverlayNavigation) return;
     
@@ -89,6 +90,14 @@ const Menus: React.FC<MenusProps> = ({ onOverlayNavigation, onCommunityInfoClick
           onClick={() => handleButtonClick('invoice')}
         >
           Invoice
+        </button>
+
+        {/* AI Assistant Button */}
+        <button 
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors theme-transition"
+          onClick={() => onAIAssistantClick?.()}
+        >
+          AI Assistant
         </button>
 
         

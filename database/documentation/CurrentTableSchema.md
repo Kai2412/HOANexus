@@ -5,7 +5,7 @@
 
 ## Overview
 
-This document describes the **actual current tables** in the HOA Nexus system. There are **16 core tables** across 2 databases:
+This document describes the **actual current tables** in the HOA Nexus system. There are **17 core tables** across 2 databases:
 
 - **Master Database** (`hoa_nexus_master`): 3 tables for multi-tenant organization and user management
 - **Client Database** (`hoa_nexus_testclient`): 13 tables for client-specific data
@@ -532,6 +532,13 @@ This document describes the **actual current tables** in the HOA Nexus system. T
 | `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
 | `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
 | `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+| `IsIndexed` | bit | NOT NULL, DEFAULT 0 | Document indexing status (for AI/RAG) |
+| `LastIndexedDate` | datetime2 | NULL | When file was last indexed |
+| `IndexingVersion` | int | NULL, DEFAULT 1 | Version of indexing logic used |
+| `FileHash` | nvarchar(64) | NULL | SHA-256 hash of file content (for change detection) |
+| `IndexingError` | nvarchar(MAX) | NULL | Error message if indexing failed |
+| `ChunkCount` | int | NULL, DEFAULT 0 | Number of text chunks created during indexing |
+| `ForceReindex` | bit | NOT NULL, DEFAULT 0 | Admin flag to force re-indexing |
 
 **Indexes**:
 - Primary Key: `PK_cor_Files` on `FileID`
@@ -540,11 +547,13 @@ This document describes the **actual current tables** in the HOA Nexus system. T
   - `FK_cor_Files_Community` → `cor_Communities(CommunityID)` (nullable)
 - Check Constraints:
   - `CK_cor_Files_FolderType` ensures value is 'Community' or 'Corporate'
-  - `CK_cor_Files_FolderType_CommunityID` ensures Community files have CommunityID, Corporate files do not
+  - `CK_cor_Files_FolderType_CommunityID` ensures Community files have CommunityID, Corporate files can optionally have CommunityID (for linked files)
 - Index: `IX_cor_Files_FolderID` on `FolderID`
 - Index: `IX_cor_Files_CommunityID` on `CommunityID`
 - Index: `IX_cor_Files_FolderType` on `FolderType`
 - Index: `IX_cor_Files_FileType` on `FileType`
+- Index: `IX_cor_Files_IsIndexed` on `IsIndexed` (filtered, WHERE IsIndexed = 0)
+- Index: `IX_cor_Files_FileHash` on `FileHash` (filtered, WHERE FileHash IS NOT NULL)
 
 **Relationships**:
 - References: `cor_Folders` via `FolderID` (optional, NULL for root-level files)
@@ -553,11 +562,16 @@ This document describes the **actual current tables** in the HOA Nexus system. T
 **Business Logic**:
 - Files are **hard deleted** (not soft deleted) - both database record and blob storage file are removed
 - **Community Files**: `FolderType = 'Community'`, `CommunityID IS NOT NULL` - tied to a specific community
-- **Corporate Files**: `FolderType = 'Corporate'`, `CommunityID IS NULL` - organization-wide, for mass imports/exports and corporate storage
+- **Corporate Files**: `FolderType = 'Corporate'`, `CommunityID IS NULL` or `CommunityID IS NOT NULL` - organization-wide storage. Corporate files can optionally have a `CommunityID` to link them to specific communities (e.g., management fee invoices) while still being stored in Corporate folders
 - Files can be at root level (`FolderID IS NULL`) or in a folder (`FolderID = folderID`)
 - Supported file types: PDFs, Images, Documents
 - File size limit: 25-30MB per file
 - Corporate and Community files are completely separated and never mix
+- **Document Indexing**: PDF files can be indexed for AI document search (RAG - Retrieval Augmented Generation)
+  - `IsIndexed` tracks if file has been processed
+  - `FileHash` (SHA-256) detects content changes to avoid unnecessary re-indexing
+  - `IndexingError` stores error messages for failed indexing attempts
+  - `ForceReindex` allows admins to manually trigger re-indexing
 
 ----
 
@@ -634,7 +648,94 @@ This document describes the **actual current tables** in the HOA Nexus system. T
 - DisplayOrder controls line item order on invoice
 - Amounts are summed to calculate invoice Total
 
-----
+-----
+
+### 17. `cor_FinancialData`
+
+**Purpose**: Stores extracted structured financial data from monthly financial statement PDFs. Used for financial analysis, budget recommendations, and collection rate tracking.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `FinancialDataID` | uniqueidentifier | PK, DEFAULT NEWID() | Primary key |
+| `CommunityID` | uniqueidentifier | NOT NULL, FK → cor_Communities | Associated community |
+| `FileID` | uniqueidentifier | NULL, FK → cor_Files | Link to source PDF file |
+| `StatementDate` | date | NOT NULL | Date from statement (end of month) |
+| `StatementMonth` | int | NOT NULL, CHECK (1-12) | Month (1-12) |
+| `StatementYear` | int | NOT NULL | Year (e.g., 2025) |
+| `IncomeData` | nvarchar(MAX) | NULL | JSON: assessments, interest, late fees, etc. |
+| `ExpenseData` | nvarchar(MAX) | NULL | JSON: categories (General/Admin, Maintenance, Reserve) |
+| `BalanceSheetData` | nvarchar(MAX) | NULL | JSON: assets, liabilities, equity, fund balances |
+| `TotalIncome` | decimal(12,2) | NULL | Total income for the month |
+| `TotalExpenses` | decimal(12,2) | NULL | Total expenses for the month |
+| `NetIncome` | decimal(12,2) | NULL | Net income (Income - Expenses) |
+| `YTDIncome` | decimal(12,2) | NULL | Year-to-date total income |
+| `YTDExpenses` | decimal(12,2) | NULL | Year-to-date total expenses |
+| `YTDNetIncome` | decimal(12,2) | NULL | Year-to-date net income |
+| `AssessmentIncome` | decimal(12,2) | NULL | Total assessments billed (YTD) |
+| `AssessmentCollected` | decimal(12,2) | NULL | Total assessments collected (YTD) |
+| `CollectionRate` | decimal(5,4) | NULL, CHECK (0-1) | Collection rate (0.9600 = 96%) |
+| `ExtractedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | When data was extracted |
+| `ExtractionVersion` | int | NULL, DEFAULT 1 | Version of extraction logic used |
+| `ExtractionError` | nvarchar(MAX) | NULL | Error message if extraction failed |
+| `CreatedOn` | datetime2 | NOT NULL, DEFAULT SYSUTCDATETIME() | Creation timestamp |
+| `CreatedBy` | uniqueidentifier | NULL | Creator stakeholder ID |
+| `ModifiedOn` | datetime2 | NULL | Last modification timestamp |
+| `ModifiedBy` | uniqueidentifier | NULL | Last modifier stakeholder ID |
+| `IsActive` | bit | NOT NULL, DEFAULT 1 | Soft delete flag |
+
+**Indexes**:
+- Primary Key: `PK_cor_FinancialData` on `FinancialDataID`
+- Foreign Keys:
+  - `FK_cor_FinancialData_Community` → `cor_Communities(CommunityID)`
+  - `FK_cor_FinancialData_File` → `cor_Files(FileID)`
+- Index: `IX_cor_FinancialData_CommunityID` on `CommunityID`
+- Index: `IX_cor_FinancialData_Date` on `(StatementYear, StatementMonth)`
+- Index: `IX_cor_FinancialData_FileID` on `FileID` (filtered, WHERE FileID IS NOT NULL)
+- Unique: `UQ_cor_FinancialData_Community_Date` on `(CommunityID, StatementYear, StatementMonth)` WHERE `IsActive = 1`
+
+**Relationships**:
+- References: `cor_Communities` via `CommunityID`
+- References: `cor_Files` via `FileID` (optional, links to source PDF)
+
+**Business Logic**:
+- One financial statement per community per month/year (enforced by unique index)
+- Data is extracted automatically during PDF indexing if file is detected as financial statement
+- JSON fields (`IncomeData`, `ExpenseData`, `BalanceSheetData`) store detailed breakdowns
+- Aggregated totals (`TotalIncome`, `TotalExpenses`, etc.) are stored for fast queries without JSON parsing
+- Collection rate is calculated from assessment income vs collected amounts
+- Extraction errors are logged in `ExtractionError` field for troubleshooting
+
+**JSON Structure Examples**:
+
+**IncomeData**:
+```json
+{
+  "assessments": {
+    "monthTotal": 40819.85,
+    "ytdTotal": 399866.16,
+    "byCommunity": {
+      "Cap Rock": 3043.95,
+      "Fairways": 4899.50,
+      "Grand Mesa": 22045.40
+    }
+  },
+  "interestIncome": { "month": 7047.84, "ytd": 71623.54 },
+  "lateFees": { "month": 0.00, "ytd": -27.00 },
+  "total": { "month": 47840.69, "ytd": 471372.70 }
+}
+```
+
+**ExpenseData**:
+```json
+{
+  "generalAdmin": { "month": 0.00, "ytd": 191.45, "categories": {} },
+  "maintenance": { "month": 0.00, "ytd": 9299.70, "categories": {} },
+  "reserve": { "month": 13535.15, "ytd": 142922.23, "byCommunity": {} },
+  "total": { "month": 13535.15, "ytd": 142922.23 }
+}
+```
+
+-----
 
 ## Key Design Patterns
 
@@ -694,7 +795,8 @@ Client Database (hoa_nexus_testclient)
 │   ├── Referenced by: cor_CommitmentFees.CommunityID
 │   ├── Referenced by: cor_Folders.CommunityID (optional, NULL for global)
 │   ├── Referenced by: cor_Files.CommunityID
-│   └── Referenced by: cor_Invoices.CommunityID
+│   ├── Referenced by: cor_Invoices.CommunityID
+│   └── Referenced by: cor_FinancialData.CommunityID
 │
 ├── cor_ManagementFees
 │   ├── CommunityID → cor_Communities
@@ -732,8 +834,12 @@ Client Database (hoa_nexus_testclient)
 │   ├── FileID → cor_Files (PDF link)
 │   └── Referenced by: cor_InvoiceCharges.InvoiceID
 │
-└── cor_InvoiceCharges
-    └── InvoiceID → cor_Invoices
+├── cor_InvoiceCharges
+│   └── InvoiceID → cor_Invoices
+│
+└── cor_FinancialData
+    ├── CommunityID → cor_Communities
+    └── FileID → cor_Files (source PDF link)
 ```
 
 ---

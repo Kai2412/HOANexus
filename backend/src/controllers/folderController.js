@@ -282,11 +282,45 @@ const deleteFolder = async (req, res) => {
   }
 };
 
+/**
+ * Get Corporate folders that contain files linked to a community
+ * Used for virtual Corporate folder in community file browser
+ */
+const getCorporateFoldersForCommunity = async (req, res) => {
+  const { communityId } = req.params;
+
+  if (!isGuid(communityId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Valid community ID is required'
+    });
+  }
+
+  try {
+    const folders = await Folder.getCorporateFoldersForCommunity(communityId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Corporate folders retrieved successfully',
+      data: folders,
+      count: folders.length
+    });
+  } catch (error) {
+    logger.error('Error fetching corporate folders for community', 'FolderController', { communityId }, error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve corporate folders',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getFoldersByCommunity,
   getFolderTreeByCommunity,
   getCorporateFolders,
   getCorporateFolderTree,
+  getCorporateFoldersForCommunity,
   getFolderById,
   createFolder,
   updateFolder,

@@ -461,7 +461,8 @@ const generateManagementFeeInvoices = async (req, res) => {
           feeData,
           invoiceDate,
           runDate,
-          monthFolder
+          monthFolder,
+          community.CommunityID // Pass communityId to link invoice to community
         );
 
         results.push({
@@ -474,7 +475,9 @@ const generateManagementFeeInvoices = async (req, res) => {
       } catch (error) {
         logger.error('Error generating invoice for community', 'InvoiceController', {
           communityCode: community.PropertyCode,
-          communityId: community.CommunityID
+          communityId: community.CommunityID,
+          errorMessage: error.message,
+          errorStack: error.stack
         }, error);
         errors.push({
           communityId: community.CommunityID,
@@ -484,6 +487,12 @@ const generateManagementFeeInvoices = async (req, res) => {
         });
       }
     }
+
+    logger.info('Management fee invoice generation completed', 'InvoiceController', {
+      generated: results.length,
+      total: activeCommunities.length,
+      errors: errors.length
+    });
 
     res.status(200).json({
       success: true,

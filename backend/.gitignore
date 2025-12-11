@@ -16,6 +16,9 @@ yarn-error.log*
 # Azurite data (local blob storage)
 azurite-data/
 
+# ChromaDB data (vector database)
+chroma-data/
+
 # Uploads (if using local filesystem fallback)
 uploads/
 

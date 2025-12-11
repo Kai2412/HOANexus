@@ -10,6 +10,9 @@ const config = require('./config');
 // Import database connection
 const { getConnection } = require('./config/database');
 
+// Import logging service (needed early for AI routes)
+const { logger } = require('./utils/logger');
+
 // Import route files
 const communityRoutes = require('./routes/communityRoutes');
 // const propertyRoutes = require('./routes/propertyRoutes'); // Temporarily disabled - will be rebuilt with new table
@@ -31,11 +34,26 @@ const folderRoutes = require('./routes/folderRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 
+// AI Routes (optional - can be disabled via feature flag)
+let aiRoutes = null;
+// Debug: Log env vars to help diagnose issues (using console.log for early startup)
+console.log('🔍 AI Config Debug:', {
+  ENABLE_AI: process.env.ENABLE_AI,
+  hasANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+  apiKeyPrefix: process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_API_KEY.substring(0, 15) + '...' : 'NOT SET',
+  NODE_ENV: process.env.NODE_ENV
+});
+if (process.env.ENABLE_AI === 'true' || process.env.ANTHROPIC_API_KEY) {
+  try {
+    aiRoutes = require('./routes/aiRoutes');
+    logger.info('AI routes loaded', 'Server');
+  } catch (error) {
+    logger.warn('Failed to load AI routes', 'Server', {}, error);
+  }
+}
+
 // Import error handling utilities
 const { globalErrorHandler } = require('./utils/errorHandler');
-
-// Import logging service
-const { logger } = require('./utils/logger');
 
 const app = express();
 const PORT = config.server.port;
@@ -113,6 +131,14 @@ app.use('/api/admin/bulk-upload', bulkUploadRoutes);
 app.use('/api/folders', folderRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/invoices', invoiceRoutes);
+
+// AI Routes (conditionally loaded)
+if (aiRoutes) {
+  app.use('/api/ai', aiRoutes);
+  logger.info('AI service enabled at /api/ai', 'Server');
+} else {
+  logger.info('AI service disabled (set ENABLE_AI=true and ANTHROPIC_API_KEY to enable)', 'Server');
+}
 
 // Test database connection endpoint
 app.get('/api/test-db', async (req, res) => {

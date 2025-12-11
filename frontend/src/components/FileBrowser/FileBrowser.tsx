@@ -25,12 +25,15 @@ interface FileBrowserProps {
 const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
   const { selectedCommunity } = useCommunity();
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [corporateFolders, setCorporateFolders] = useState<Folder[]>([]); // Corporate folders linked to community
   const [files, setFiles] = useState<File[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [isCorporateView, setIsCorporateView] = useState(false); // Track if viewing Corporate virtual folder
   const [folderPath, setFolderPath] = useState<Folder[]>([]); // Breadcrumb path
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -45,8 +48,13 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
 
     const loadFolders = async () => {
       try {
+        // Load community folders
         const foldersData = await dataService.getFoldersByCommunity(communityId);
         setFolders(foldersData);
+        
+        // Load Corporate folders that have files linked to this community
+        const corporateFoldersData = await dataService.getCorporateFoldersForCommunity(communityId);
+        setCorporateFolders(corporateFoldersData);
       } catch (error) {
         logger.error('Error loading folders', 'FileBrowser', { communityId }, error as Error);
       }
@@ -55,6 +63,22 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
     loadFolders();
   }, [communityId]);
 
+  // Reload Corporate folders when entering Corporate view
+  useEffect(() => {
+    if (!communityId || !isCorporateView) return;
+
+    const loadCorporateFolders = async () => {
+      try {
+        const corporateFoldersData = await dataService.getCorporateFoldersForCommunity(communityId);
+        setCorporateFolders(corporateFoldersData);
+      } catch (error) {
+        logger.error('Error loading Corporate folders', 'FileBrowser', { communityId }, error as Error);
+      }
+    };
+
+    loadCorporateFolders();
+  }, [communityId, isCorporateView]);
+
   // Load files when folder changes or on initial load
   useEffect(() => {
     if (!communityId) return;
@@ -62,12 +86,21 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
     const loadFiles = async () => {
       setIsLoadingFiles(true);
       try {
-        const filesData = await dataService.getFilesByFolder(currentFolderId, communityId);
+        let filesData: File[];
+        
+        if (isCorporateView) {
+          // Loading Corporate files linked to this community
+          filesData = await dataService.getCorporateFilesByFolderForCommunity(currentFolderId, communityId);
+        } else {
+          // Loading regular community files
+          filesData = await dataService.getFilesByFolder(currentFolderId, communityId);
+        }
+        
         setFiles(filesData);
         // Clear search when folder changes
         setSearchTerm('');
       } catch (error) {
-        logger.error('Error loading files', 'FileBrowser', { folderId: currentFolderId }, error as Error);
+        logger.error('Error loading files', 'FileBrowser', { folderId: currentFolderId, isCorporateView }, error as Error);
       } finally {
         setIsLoadingFiles(false);
         setIsLoading(false); // Also clear initial loading state
@@ -75,16 +108,40 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
     };
 
     loadFiles();
-  }, [currentFolderId, communityId]);
+  }, [currentFolderId, communityId, isCorporateView]);
 
   // Get subfolders for current folder
   const getSubfolders = (): Folder[] => {
-    if (!currentFolderId) {
-      // Root level - show folders with no parent
-      return folders.filter(f => !f.parentFolderId);
+    if (isCorporateView) {
+      // In Corporate view - show Corporate folders
+      if (!currentFolderId) {
+        // Root Corporate level - show Corporate folders with no parent
+        const rootFolders = corporateFolders.filter(f => !f.parentFolderId);
+        logger.info('Corporate root folders', 'FileBrowser', {
+          totalCorporateFolders: corporateFolders.length,
+          rootFolders: rootFolders.length,
+          rootFolderNames: rootFolders.map(f => f.name),
+          allCorporateFolderNames: corporateFolders.map(f => ({ name: f.name, parentId: f.parentFolderId }))
+        });
+        return rootFolders;
+      }
+      // Show Corporate folders that have current folder as parent
+      const subfolders = corporateFolders.filter(f => f.parentFolderId === currentFolderId);
+      logger.info('Corporate subfolders', 'FileBrowser', {
+        currentFolderId,
+        subfolders: subfolders.length,
+        subfolderNames: subfolders.map(f => f.name)
+      });
+      return subfolders;
+    } else {
+      // In Community view - show community folders
+      if (!currentFolderId) {
+        // Root level - show folders with no parent
+        return folders.filter(f => !f.parentFolderId);
+      }
+      // Show folders that have current folder as parent
+      return folders.filter(f => f.parentFolderId === currentFolderId);
     }
-    // Show folders that have current folder as parent
-    return folders.filter(f => f.parentFolderId === currentFolderId);
   };
 
   // Handle folder click - navigate into folder
@@ -93,17 +150,37 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
     setFolderPath(prev => [...prev, folder]);
   };
 
+  // Handle Corporate Files virtual folder click
+  const handleCorporateFolderClick = () => {
+    setIsCorporateView(true);
+    setCurrentFolderId(null); // Root of Corporate structure
+    setFolderPath([{ 
+      id: 'corporate-virtual', 
+      name: 'Corporate Files', 
+      folderType: 'Corporate',
+      isVirtual: true 
+    } as Folder]);
+  };
+
   // Handle breadcrumb click - navigate back
   const handleBreadcrumbClick = (index: number) => {
     if (index === -1) {
       // Go to root
       setCurrentFolderId(null);
       setFolderPath([]);
+      setIsCorporateView(false); // Exit Corporate view
     } else {
       // Navigate to specific folder in path
       const newPath = folderPath.slice(0, index + 1);
       setFolderPath(newPath);
       setCurrentFolderId(newPath[index].id);
+      
+      // Check if we're still in Corporate view
+      if (newPath[0]?.id === 'corporate-virtual') {
+        setIsCorporateView(true);
+      } else {
+        setIsCorporateView(false);
+      }
     }
   };
 
@@ -158,6 +235,12 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
 
   // Handle file delete
   const handleDeleteFile = async (file: File) => {
+    // Corporate files are view-only - don't allow deletion from community view
+    if ((file as any).isCorporate || (file as any).isViewOnly) {
+      alert('Corporate files cannot be deleted from this view. Please use the Corporate file browser.');
+      return;
+    }
+
     if (!confirm(`Are you sure you want to delete "${file.fileName}"? This action cannot be undone.`)) {
       return;
     }
@@ -166,7 +249,12 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
       await dataService.deleteFile(file.id);
       
       // Reload files after successful deletion
-      const filesData = await dataService.getFilesByFolder(currentFolderId, communityId);
+      let filesData: File[];
+      if (isCorporateView) {
+        filesData = await dataService.getCorporateFilesByFolderForCommunity(currentFolderId, communityId);
+      } else {
+        filesData = await dataService.getFilesByFolder(currentFolderId, communityId);
+      }
       setFiles(filesData);
     } catch (error) {
       logger.error('Error deleting file', 'FileBrowser', { fileId: file.id }, error as Error);
@@ -189,42 +277,82 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
       alert('Please select a community first');
       return;
     }
+    // Don't allow uploads in Corporate view (view-only)
+    if (isCorporateView) {
+      alert('Corporate files are view-only. Please use the Corporate file browser to upload files.');
+      return;
+    }
     fileInputRef.current?.click();
   };
 
   // Handle file selection and upload
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-    if (!selectedFile || !communityId) return;
+    const selectedFiles = event.target.files;
+    if (!selectedFiles || selectedFiles.length === 0 || !communityId) return;
 
+    const filesArray = Array.from(selectedFiles);
     setIsUploading(true);
+    setUploadProgress({ current: 0, total: filesArray.length, fileName: '' });
+
+    const errors: string[] = [];
+    const successes: string[] = [];
+
     try {
-      // Log for debugging
-      logger.info('Uploading file', 'FileBrowser', {
-        fileName: selectedFile.name,
-        currentFolderId,
-        folderPath: folderPath.map(f => f.name).join(' -> ')
-      });
+      // Upload files sequentially to avoid overwhelming the server
+      for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i];
+        setUploadProgress({ current: i + 1, total: filesArray.length, fileName: file.name });
 
-      await dataService.uploadFile({
-        file: selectedFile,
-        CommunityID: communityId,
-        FolderID: currentFolderId || null,
-      });
+        try {
+          // Log for debugging
+          logger.info('Uploading file', 'FileBrowser', {
+            fileName: file.name,
+            currentFolderId,
+            folderPath: folderPath.map(f => f.name).join(' -> '),
+            progress: `${i + 1}/${filesArray.length}`
+          });
 
-      // Reload files after successful upload
-      const filesData = await dataService.getFilesByFolder(currentFolderId, communityId);
+          await dataService.uploadFile({
+            file: file,
+            CommunityID: communityId,
+            FolderID: currentFolderId || null,
+          });
+
+          successes.push(file.name);
+        } catch (error) {
+          logger.error('Error uploading file', 'FileBrowser', { fileName: file.name }, error as Error);
+          errors.push(file.name);
+        }
+      }
+
+      // Reload files after all uploads complete
+      let filesData: File[];
+      if (isCorporateView) {
+        filesData = await dataService.getCorporateFilesByFolderForCommunity(currentFolderId, communityId);
+      } else {
+        filesData = await dataService.getFilesByFolder(currentFolderId, communityId);
+      }
       setFiles(filesData);
+
+      // Show summary message
+      if (errors.length > 0 && successes.length > 0) {
+        alert(`Uploaded ${successes.length} file(s) successfully.\nFailed to upload: ${errors.join(', ')}`);
+      } else if (errors.length > 0) {
+        alert(`Failed to upload ${errors.length} file(s): ${errors.join(', ')}`);
+      } else if (successes.length > 1) {
+        alert(`Successfully uploaded ${successes.length} files!`);
+      }
 
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      logger.error('Error uploading file', 'FileBrowser', { fileName: selectedFile.name }, error as Error);
-      alert('Failed to upload file. Please try again.');
+      logger.error('Error during file upload process', 'FileBrowser', {}, error as Error);
+      alert('An error occurred during upload. Please try again.');
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -256,18 +384,22 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
         </div>
         <button 
           onClick={handleUploadClick}
-          disabled={isUploading || !communityId}
+          disabled={isUploading || !communityId || isCorporateView}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <PlusIcon className="h-5 w-5" />
-          {isUploading ? 'Uploading...' : 'Upload File'}
+          {isUploading && uploadProgress 
+            ? `Uploading ${uploadProgress.current}/${uploadProgress.total}...` 
+            : isUploading 
+            ? 'Uploading...' 
+            : 'Upload Files'}
         </button>
         <input
           ref={fileInputRef}
           type="file"
           onChange={handleFileChange}
           className="hidden"
-          multiple={false}
+          multiple
         />
       </div>
 
@@ -316,14 +448,32 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
     <div className="space-y-6">
       {/* Folders */}
       {(() => {
-        const filteredSubfolders = subfolders.filter(folder =>
+        // Add Corporate Files virtual folder at root level if not in Corporate view and Corporate folders exist
+        const virtualCorporateFolder: Folder | null = 
+          !isCorporateView && 
+          !currentFolderId && 
+          corporateFolders.length > 0 
+            ? { 
+                id: 'corporate-virtual', 
+                name: 'Corporate Files', 
+                folderType: 'Corporate',
+                isVirtual: true 
+              } as Folder 
+            : null;
+        
+        const allFolders = virtualCorporateFolder 
+          ? [virtualCorporateFolder, ...subfolders]
+          : subfolders;
+        
+        const filteredSubfolders = allFolders.filter(folder =>
           !searchTerm ||
           folder.name.toLowerCase().includes(searchTerm.toLowerCase())
         );
+        
         return filteredSubfolders.length > 0 ? (
           <div>
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-              Folders ({filteredSubfolders.length}{searchTerm && ` of ${subfolders.length}`})
+              Folders ({filteredSubfolders.length}{searchTerm && ` of ${allFolders.length}`})
               {currentFolderId && (
                 <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
                   (in {folderPath[folderPath.length - 1]?.name || 'current folder'})
@@ -336,19 +486,43 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
               )}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredSubfolders.map((folder) => (
-              <button
-                key={folder.id}
-                onClick={() => handleFolderClick(folder)}
-                className="flex items-center gap-3 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-md transition-all text-left"
-              >
-                <FolderIcon className="h-10 w-10 text-yellow-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 dark:text-white truncate">{folder.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Folder</p>
-                </div>
-              </button>
-              ))}
+              {filteredSubfolders.map((folder) => {
+                const isVirtual = (folder as any).isVirtual;
+                const isCorporate = folder.folderType === 'Corporate';
+                
+                return (
+                  <button
+                    key={folder.id}
+                    onClick={() => {
+                      if (isVirtual) {
+                        handleCorporateFolderClick();
+                      } else {
+                        handleFolderClick(folder);
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-4 bg-white dark:bg-gray-800 rounded-lg border transition-all text-left ${
+                      isCorporate || isVirtual
+                        ? 'border-blue-300 dark:border-blue-700 hover:border-blue-500 dark:hover:border-blue-500'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500'
+                    } hover:shadow-md`}
+                  >
+                    <FolderIcon className={`h-10 w-10 flex-shrink-0 ${isCorporate || isVirtual ? 'text-blue-500' : 'text-yellow-500'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900 dark:text-white truncate">{folder.name}</p>
+                        {(isCorporate || isVirtual) && (
+                          <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded whitespace-nowrap">
+                            View Only
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {isVirtual ? 'Corporate Files (Linked)' : 'Folder'}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : null;
@@ -407,7 +581,14 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
                   <div className="flex items-start gap-3 mb-2">
                     {getFileIconComponent(file)}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-white text-sm break-words">{file.fileName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900 dark:text-white text-sm break-words">{file.fileName}</p>
+                        {((file as any).isCorporate || (file as any).isViewOnly) && (
+                          <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded whitespace-nowrap flex-shrink-0">
+                            Corporate
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center justify-between gap-4">
                         <div>{formatFileSize(file.fileSize)}</div>
                         {file.createdOn && (
@@ -418,30 +599,57 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ community }) => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-end gap-1 pt-1.5 border-t border-gray-200 dark:border-gray-700">
-                    {canPreview && (
-                      <button
-                        onClick={() => handlePreview(file)}
-                        className="p-1.5 text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors"
-                        title="Preview"
+                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-gray-200 dark:border-gray-700">
+                    {/* Indexing Status Badge for PDFs - Left side */}
+                    {file.mimeType === 'application/pdf' && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${
+                          file.isIndexed
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                            : file.indexingError
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        }`}
+                        title={
+                          file.isIndexed
+                            ? `Indexed on ${file.lastIndexedDate ? formatDate(file.lastIndexedDate) : 'Unknown'}`
+                            : file.indexingError
+                            ? `Indexing failed: ${file.indexingError.substring(0, 50)}...`
+                            : 'Not indexed yet'
+                        }
                       >
-                        <EyeIcon className="h-4 w-4" />
-                      </button>
+                        {file.isIndexed ? '✓ Indexed' : file.indexingError ? '✗ Error' : '○ Pending'}
+                      </span>
                     )}
-                    <button
-                      onClick={() => handleDownload(file)}
-                      className="p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                      title="Download"
-                    >
-                      <ArrowDownTrayIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteFile(file)}
-                      className="p-1.5 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      title="Delete"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
+                    {/* Action buttons - Right side */}
+                    <div className="flex items-center gap-1 ml-auto">
+                      {canPreview && (
+                        <button
+                          onClick={() => handlePreview(file)}
+                          className="p-1.5 text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                          title="Preview"
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDownload(file)}
+                        className="p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="Download"
+                      >
+                        <ArrowDownTrayIcon className="h-4 w-4" />
+                      </button>
+                      {/* Hide delete button for Corporate files (view-only) */}
+                      {!((file as any).isCorporate || (file as any).isViewOnly) && (
+                        <button
+                          onClick={() => handleDeleteFile(file)}
+                          className="p-1.5 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                          title="Delete"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

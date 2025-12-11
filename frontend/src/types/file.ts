@@ -14,6 +14,14 @@ export interface DatabaseFile {
   CreatedBy: string | null;
   ModifiedOn: string | null;
   ModifiedBy: string | null;
+  // Document indexing fields
+  IsIndexed: boolean;
+  LastIndexedDate: string | null;
+  IndexingVersion: number | null;
+  FileHash: string | null;
+  IndexingError: string | null;
+  ChunkCount: number | null;
+  ForceReindex: boolean;
 }
 
 // Frontend representation
@@ -32,6 +40,14 @@ export interface File {
   createdBy: string | null;
   modifiedOn: string | null;
   modifiedBy: string | null;
+  // Document indexing fields
+  isIndexed: boolean;
+  lastIndexedDate: string | null;
+  indexingVersion: number | null;
+  fileHash: string | null;
+  indexingError: string | null;
+  chunkCount: number | null;
+  forceReindex: boolean;
 }
 
 // Upload payload

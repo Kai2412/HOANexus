@@ -8,6 +8,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import LoadingOverlay from './components/LoadingOverlay'
 import Login from './components/Login'
 import ChangePasswordModal from './components/Modal/ChangePasswordModal'
+import AIAssistant from './components/AIAssistant'
 
 function AppContent() {
   const { communities, selectedCommunity, selectCommunity, loading, error } = useCommunity()
@@ -16,6 +17,7 @@ function AppContent() {
   const [isCommunitySelectorExpanded, setIsCommunitySelectorExpanded] = useState(false)
   const [currentOverlay, setCurrentOverlay] = useState<'community-info' | 'directory' | 'forms' | 'tickets' | 'reports' | 'settings' | 'admin' | null>('community-info')
   const [overlayParams, setOverlayParams] = useState<Record<string, any>>({})
+  const [showAIAssistant, setShowAIAssistant] = useState(false)
   
   const toggleCommunitySelector = () => {
     setIsCommunitySelectorExpanded(!isCommunitySelectorExpanded)
@@ -217,6 +219,7 @@ function AppContent() {
           <Menus 
             onOverlayNavigation={handleOverlayNavigation}
             onCommunityInfoClick={handleCommunityInfoClick}
+            onAIAssistantClick={() => setShowAIAssistant(true)}
           />
         </div>
 
@@ -250,6 +253,12 @@ function AppContent() {
           isRequired={false}
         />
       )}
+
+      {/* AI Assistant Modal */}
+      <AIAssistant 
+        isOpen={showAIAssistant}
+        onClose={() => setShowAIAssistant(false)}
+      />
     </div>
   )
 }

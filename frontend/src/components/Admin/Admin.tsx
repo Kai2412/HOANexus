@@ -19,6 +19,7 @@ import AdminDropDownTemplate from './AdminDropDownTemplate/AdminDropDownTemplate
 import BulkUpload from './BulkUpload';
 import CorporateFileBrowser from '../CorporateFileBrowser';
 import CorporateProcesses from '../CorporateProcesses';
+import AdminAutomation from '../AdminAutomation';
 import dataService from '../../services/dataService';
 import type { FeeMaster, CreateFeeMasterData, UpdateFeeMasterData, Folder, CreateFolderData, UpdateFolderData } from '../../types';
 import { useCommunity } from '../../context';
@@ -44,7 +45,7 @@ type DropdownCategory =
   | 'stakeholder-types'
   | 'ticket-statuses';
 type BulkUploadType = 'communities-upload' | 'stakeholders-upload';
-type AdminCategory = 'dynamic-drop-choices' | 'bulk-uploads' | 'master-fees' | 'folder-management' | 'corporate-filing' | 'corporate-processes' | 'other';
+type AdminCategory = 'dynamic-drop-choices' | 'bulk-uploads' | 'master-fees' | 'folder-management' | 'corporate-filing' | 'corporate-processes' | 'admin-automation' | 'other';
 type AdminView = 'categories' | AdminCategory | DropdownCategory | BulkUploadType;
 
 interface DropdownChoice {
@@ -185,6 +186,12 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       description: 'Run automated processes for corporate-wide operations'
     },
     {
+      id: 'admin-automation' as AdminCategory,
+      name: 'Admin Automation',
+      icon: CogIcon,
+      description: 'Run automated scripts for system maintenance and AI features'
+    },
+    {
       id: 'bulk-uploads' as AdminCategory,
       name: 'Bulk Uploads',
       icon: ArrowUpTrayIcon,
@@ -280,6 +287,12 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
         onClick: () => setCurrentView('corporate-processes'),
         isActive: true
       });
+    } else if (currentView === 'admin-automation') {
+      base.push({ 
+        label: 'Admin Automation',
+        onClick: () => setCurrentView('admin-automation'),
+        isActive: true
+      });
     } else if (currentView === 'communities-upload' || currentView === 'stakeholders-upload') {
       base.push({ 
         label: 'Bulk Uploads',
@@ -290,7 +303,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
       } else if (currentView === 'stakeholders-upload') {
         base.push({ label: 'Stakeholders', isActive: true });
       }
-    } else if (currentView !== 'categories' && (currentView as string) !== 'dynamic-drop-choices' && (currentView as string) !== 'bulk-uploads' && (currentView as string) !== 'master-fees' && (currentView as string) !== 'folder-management' && (currentView as string) !== 'corporate-filing' && (currentView as string) !== 'corporate-processes') {
+    } else if (currentView !== 'categories' && (currentView as string) !== 'dynamic-drop-choices' && (currentView as string) !== 'bulk-uploads' && (currentView as string) !== 'master-fees' && (currentView as string) !== 'folder-management' && (currentView as string) !== 'corporate-filing' && (currentView as string) !== 'corporate-processes' && (currentView as string) !== 'admin-automation') {
       // We're in a dropdown category
       base.push({ 
         label: 'Dynamic Drop Choices',
@@ -2109,6 +2122,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     if (currentView === 'folder-management') return 'Folder Management';
     if (currentView === 'corporate-filing') return 'Corporate Filing';
     if (currentView === 'corporate-processes') return 'Corporate Processes';
+    if (currentView === 'admin-automation') return 'Admin Automation';
     if (currentView === 'dynamic-drop-choices') return 'Dynamic Drop Choices';
     if (currentView === 'categories') return 'Admin Portal';
     
@@ -2151,6 +2165,7 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
     if (currentView === 'folder-management') return 'Create and manage folder structure that applies to all communities';
     if (currentView === 'corporate-filing') return 'Manage corporate-wide files and folders (separate from community files)';
     if (currentView === 'corporate-processes') return 'Run automated processes for corporate-wide operations';
+    if (currentView === 'admin-automation') return 'Run automated scripts for system maintenance and AI features';
     if (currentView === 'dynamic-drop-choices') return 'Manage dropdown options and choices used throughout the system';
     if (currentView === 'categories') return 'Manage system configurations and admin tools';
     
@@ -2291,6 +2306,9 @@ const Admin: React.FC<AdminProps> = ({ onClose }) => {
 
           {/* Corporate Processes View */}
           {currentView === 'corporate-processes' && <CorporateProcesses />}
+
+          {/* Admin Automation View */}
+          {currentView === 'admin-automation' && <AdminAutomation />}
 
           {/* Dropdown Category Content Views */}
           {currentView !== 'categories' && currentView !== 'dynamic-drop-choices' && currentView !== 'bulk-uploads' && currentView !== 'communities-upload' && currentView !== 'stakeholders-upload' && (

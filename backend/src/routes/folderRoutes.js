@@ -18,6 +18,9 @@ router.get('/corporate/tree', folderController.getCorporateFolderTree);
 // Get all corporate folders (flat list)
 router.get('/corporate', folderController.getCorporateFolders);
 
+// Get Corporate folders that contain files linked to a community (virtual folder)
+router.get('/corporate/community/:communityId', folderController.getCorporateFoldersForCommunity);
+
 // Get folder by ID
 router.get('/:id', folderController.getFolderById);
 

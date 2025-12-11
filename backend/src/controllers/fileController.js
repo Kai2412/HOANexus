@@ -8,6 +8,7 @@ const isGuid = (value = '') => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0
 
 /**
  * Get all files for a folder
+ * Supports special "corporate" folderId to get Corporate files linked to community
  */
 const getFilesByFolder = async (req, res) => {
   const { folderId, communityId } = req.params;
@@ -19,6 +20,30 @@ const getFilesByFolder = async (req, res) => {
     });
   }
 
+  // Handle special "corporate" folderId for virtual Corporate folder
+  if (folderId === 'corporate') {
+    try {
+      // Get Corporate files linked to this community (root Corporate files)
+      const files = await File.getCorporateFilesByFolderForCommunity(null, communityId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Corporate files retrieved successfully',
+        data: files,
+        count: files.length,
+        isCorporate: true // Flag to indicate these are Corporate files
+      });
+    } catch (error) {
+      logger.error('Error fetching corporate files for community', 'FileController', { communityId }, error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve corporate files',
+        error: error.message
+      });
+    }
+    return;
+  }
+
   // Handle "root" as a special value for root-level files
   let normalizedFolderId = folderId;
   if (folderId === 'root') {
@@ -26,12 +51,12 @@ const getFilesByFolder = async (req, res) => {
   } else if (folderId && !isGuid(folderId)) {
     return res.status(400).json({
       success: false,
-      message: 'Valid folder ID is required (use "root" for root-level files)'
+      message: 'Valid folder ID is required (use "root" for root-level files, "corporate" for Corporate files)'
     });
   }
 
   try {
-    const files = await File.getByFolder(normalizedFolderId, communityId);
+    const files = await File.getByFolder(normalizedFolderId, communityId, false);
 
     res.status(200).json({
       success: true,
@@ -44,6 +69,54 @@ const getFilesByFolder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve files',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get Corporate files for a specific Corporate folder, linked to a community
+ * Used when navigating into Corporate subfolders from community view
+ */
+const getCorporateFilesByFolderForCommunity = async (req, res) => {
+  const { corporateFolderId, communityId } = req.params;
+
+  if (!isGuid(communityId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Valid community ID is required'
+    });
+  }
+
+  // Handle "root" as a special value for root-level Corporate files
+  let normalizedFolderId = corporateFolderId;
+  if (corporateFolderId === 'root') {
+    normalizedFolderId = null;
+  } else if (corporateFolderId && !isGuid(corporateFolderId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Valid Corporate folder ID is required (use "root" for root-level files)'
+    });
+  }
+
+  try {
+    const files = await File.getCorporateFilesByFolderForCommunity(normalizedFolderId, communityId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Corporate files retrieved successfully',
+      data: files,
+      count: files.length,
+      isCorporate: true // Flag to indicate these are Corporate files (view-only)
+    });
+  } catch (error) {
+    logger.error('Error fetching corporate files by folder for community', 'FileController', { 
+      corporateFolderId, 
+      communityId 
+    }, error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve corporate files',
       error: error.message
     });
   }
@@ -267,26 +340,27 @@ const uploadFile = async (req, res) => {
     });
   }
 
+  // Handle empty string from FormData as null (for both CommunityID and FolderID)
+  const communityId = CommunityID && CommunityID.trim() !== '' ? CommunityID : null;
+  const folderId = FolderID && FolderID.trim() !== '' ? FolderID : null;
+
   // Determine FolderType - default based on CommunityID presence
-  const determinedFolderType = FolderType || (CommunityID ? 'Community' : 'Corporate');
+  const determinedFolderType = FolderType || (communityId ? 'Community' : 'Corporate');
 
   // Validate based on FolderType
-  if (determinedFolderType === 'Community' && !isGuid(CommunityID)) {
+  if (determinedFolderType === 'Community' && !isGuid(communityId)) {
     return res.status(400).json({
       success: false,
       message: 'Valid community ID is required for Community files'
     });
   }
 
-  if (determinedFolderType === 'Corporate' && CommunityID) {
+  if (determinedFolderType === 'Corporate' && communityId) {
     return res.status(400).json({
       success: false,
       message: 'Corporate files must not have a CommunityID'
     });
   }
-
-  // Handle empty string from FormData as null
-  const folderId = FolderID && FolderID.trim() !== '' ? FolderID : null;
 
   if (folderId && !isGuid(folderId)) {
     return res.status(400).json({
@@ -325,7 +399,7 @@ const uploadFile = async (req, res) => {
       blobName += `/${uniqueFileName}`;
     } else {
       // Community files: communities/{communityId}/files/{folderId}/{filename} or communities/{communityId}/files/{filename}
-      blobName = `communities/${CommunityID}/files`;
+      blobName = `communities/${communityId}/files`;
       if (folderId) {
         blobName += `/${folderId}`;
       }
@@ -341,7 +415,7 @@ const uploadFile = async (req, res) => {
 
     const fileData = {
       FolderID: folderId,
-      CommunityID: determinedFolderType === 'Corporate' ? null : CommunityID,
+      CommunityID: determinedFolderType === 'Corporate' ? null : communityId,
       FolderType: determinedFolderType,
       FileName: file.originalname,
       FileNameStored: uniqueFileName,
@@ -448,6 +522,7 @@ module.exports = {
   getFilesByFolder,
   getFilesByCommunity,
   getCorporateFilesByFolder,
+  getCorporateFilesByFolderForCommunity,
   getFileById,
   uploadFile,
   downloadFile,

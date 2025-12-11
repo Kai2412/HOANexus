@@ -869,6 +869,25 @@ class DataService {
     }
   }
 
+  /**
+   * Get Corporate folders that contain files linked to a community
+   * Used for virtual Corporate folder in community file browser
+   */
+  async getCorporateFoldersForCommunity(communityId: string): Promise<Folder[]> {
+    try {
+      const response = await api.get<{ success: boolean; data: DatabaseFolder[]; message?: string; count?: number }>(
+        `/folders/corporate/community/${communityId}`
+      );
+      return (response.data || []).map((folder) => this.mapFolderFromDatabase(folder));
+    } catch (error) {
+      if ((error as any)?.response?.status === 404) {
+        return [];
+      }
+      logger.dataFetchError('corporate folders for community', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
   async getCorporateFolderTree(): Promise<Folder[]> {
     try {
       const response = await api.get<{ success: boolean; data: DatabaseFolder[]; message?: string }>(
@@ -930,15 +949,51 @@ class DataService {
       // Use "root" for null folderId to get root-level files only
       const folderParam = folderId || 'root';
       const endpoint = `/files/folder/${folderParam}/community/${communityId}`;
-      const response = await api.get<{ success: boolean; data: DatabaseFile[]; message?: string; count?: number }>(
+      const response = await api.get<{ success: boolean; data: DatabaseFile[]; message?: string; count?: number; isCorporate?: boolean }>(
         endpoint
       );
-      return (response.data || []).map((file) => this.mapFileFromDatabase(file));
+      const files = (response.data || []).map((file) => this.mapFileFromDatabase(file));
+      // Mark Corporate files if the response indicates they are Corporate
+      if (response.isCorporate) {
+        files.forEach(file => {
+          (file as any).isCorporate = true;
+          (file as any).isViewOnly = true; // Corporate files are view-only in community browser
+        });
+      }
+      return files;
     } catch (error) {
       if ((error as any)?.response?.status === 404) {
         return [];
       }
       logger.dataFetchError('files by folder', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  /**
+   * Get Corporate files for a specific Corporate folder, linked to a community
+   * Used when navigating into Corporate subfolders from community view
+   */
+  async getCorporateFilesByFolderForCommunity(corporateFolderId: string | null, communityId: string): Promise<File[]> {
+    try {
+      // Use "root" for null folderId to get root-level Corporate files
+      const folderParam = corporateFolderId || 'root';
+      const endpoint = `/files/corporate/folder/${folderParam}/community/${communityId}`;
+      const response = await api.get<{ success: boolean; data: DatabaseFile[]; message?: string; count?: number; isCorporate?: boolean }>(
+        endpoint
+      );
+      const files = (response.data || []).map((file) => this.mapFileFromDatabase(file));
+      // Mark all as Corporate and view-only
+      files.forEach(file => {
+        (file as any).isCorporate = true;
+        (file as any).isViewOnly = true; // Corporate files are view-only in community browser
+      });
+      return files;
+    } catch (error) {
+      if ((error as any)?.response?.status === 404) {
+        return [];
+      }
+      logger.dataFetchError('corporate files by folder for community', error as Error, 'DataService');
       throw error;
     }
   }
@@ -959,9 +1014,19 @@ class DataService {
     try {
       const formData = new FormData();
       formData.append('file', data.file);
-      formData.append('CommunityID', data.CommunityID);
+      // Send CommunityID - only for Community files, empty string for Corporate files (backend will normalize to null)
+      if (data.CommunityID) {
+        formData.append('CommunityID', data.CommunityID);
+      } else {
+        // For Corporate files, send empty string - backend will normalize to NULL
+        formData.append('CommunityID', '');
+      }
       // Always append FolderID - send empty string if null so backend knows it's explicitly null
       formData.append('FolderID', data.FolderID || '');
+      // Send FolderType explicitly - this is critical for Corporate files
+      if (data.FolderType) {
+        formData.append('FolderType', data.FolderType);
+      }
       if (data.FileType) {
         formData.append('FileType', data.FileType);
       }
@@ -1047,6 +1112,14 @@ class DataService {
       createdBy: db.CreatedBy,
       modifiedOn: db.ModifiedOn,
       modifiedBy: db.ModifiedBy,
+      // Document indexing fields
+      isIndexed: db.IsIndexed ?? false,
+      lastIndexedDate: db.LastIndexedDate,
+      indexingVersion: db.IndexingVersion,
+      fileHash: db.FileHash,
+      indexingError: db.IndexingError,
+      chunkCount: db.ChunkCount,
+      forceReindex: db.ForceReindex ?? false,
     };
   }
 
@@ -1271,6 +1344,158 @@ class DataService {
       return response.data;
     } catch (error) {
       logger.error('Error generating management fee invoices', 'DataService', { invoiceDate }, error as Error);
+      throw error;
+    }
+  }
+
+  // =============================================
+  // AI METHODS
+  // =============================================
+
+  /**
+   * Chat with AI assistant
+   * @param message - User's message
+   * @param conversationHistory - Previous messages in conversation
+   * @returns AI response
+   */
+  async chatWithAI(
+    message: string, 
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    options?: { communityId?: string; folderType?: string; useRAG?: boolean }
+  ): Promise<{ 
+    response: string; 
+    model?: string; 
+    sources?: {
+      documents?: Array<{
+        fileName: string;
+        fileId: string;
+        folderType: string;
+        communityId: string | null;
+      }>;
+      databaseFunctions?: Array<{
+        functionName: string;
+        communityId: string | null;
+      }>;
+    };
+    usage?: { 
+      inputTokens: number; 
+      outputTokens: number;
+      totalTokens: number;
+      cost: {
+        input: number;
+        output: number;
+        total: number;
+      };
+      iterations: number;
+    } 
+  }> {
+    try {
+      const response = await api.post<{ 
+        success: boolean; 
+        data: { 
+          response: string; 
+          model?: string; 
+          sources?: {
+            documents?: Array<{
+              fileName: string;
+              fileId: string;
+              folderType: string;
+              communityId: string | null;
+            }>;
+            databaseFunctions?: Array<{
+              functionName: string;
+              communityId: string | null;
+            }>;
+          };
+          usage?: { 
+            inputTokens: number; 
+            outputTokens: number;
+            totalTokens: number;
+            cost: {
+              input: number;
+              output: number;
+              total: number;
+            };
+            iterations: number;
+          } 
+        } 
+      }>(
+        '/ai/chat',
+        { 
+          message, 
+          conversationHistory,
+          communityId: options?.communityId,
+          folderType: options?.folderType,
+          useRAG: options?.useRAG
+        }
+      );
+      return response.data;
+    } catch (error) {
+      logger.dataFetchError('AI chat', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  /**
+   * Index all PDF documents for AI search
+   * @param options - Indexing options (communityId, folderType)
+   * @returns Indexing results
+   */
+  async indexDocuments(options?: { communityId?: string; folderType?: string }): Promise<{
+    total: number;
+    successful: number;
+    failed: number;
+    skipped: number;
+    errors: Array<{ fileId: string; fileName: string; error: string }>;
+    processedFiles?: Array<{
+      fileId: string;
+      fileName: string;
+      status: 'success' | 'skipped' | 'failed' | 'processing';
+      timestamp: string;
+      details: any;
+    }>;
+  }> {
+    try {
+      const response = await api.post<{ success: boolean; data: {
+        total: number;
+        successful: number;
+        failed: number;
+        skipped: number;
+        errors: Array<{ fileId: string; fileName: string; error: string }>;
+        processedFiles?: Array<{
+          fileId: string;
+          fileName: string;
+          status: 'success' | 'skipped' | 'failed' | 'processing';
+          timestamp: string;
+          details: any;
+        }>;
+      } }>(
+        '/ai/index-documents',
+        options || {}
+      );
+      return response.data;
+    } catch (error) {
+      logger.dataFetchError('index documents', error as Error, 'DataService');
+      throw error;
+    }
+  }
+
+  /**
+   * Reset failed indexing attempts - clears errors and marks files for re-indexing
+   * @returns Reset results
+   */
+  async resetFailedIndexes(): Promise<{
+    affectedRows: number;
+  }> {
+    try {
+      const response = await api.post<{ success: boolean; message: string; data: {
+        affectedRows: number;
+      } }>(
+        '/ai/reset-failed-indexes'
+      );
+      return response.data;
+    } catch (error) {
+      logger.dataFetchError('reset failed indexes', error as Error, 'DataService');
       throw error;
     }
   }

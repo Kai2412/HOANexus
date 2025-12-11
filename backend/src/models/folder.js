@@ -76,6 +76,98 @@ const Folder = {
   },
 
   /**
+   * Get Corporate folders that contain files linked to a specific community
+   * This is used for the virtual Corporate folder in community file browser
+   * Returns the full folder hierarchy (all parent folders up to root)
+   * @param {string} communityId - Community ID
+   * @returns {Promise<Array>} Array of Corporate folders that have files for this community (including all parent folders)
+   */
+  getCorporateFoldersForCommunity: async (communityId) => {
+    const pool = await getConnection();
+    try {
+      // Use a recursive CTE to get all folders in the hierarchy that contain files for this community
+      // This includes the folder with files AND all its parent folders up to root
+      const result = await pool.request()
+        .input('CommunityID', sql.UniqueIdentifier, communityId)
+        .query(`
+          ;WITH FolderHierarchy AS (
+            -- Base case: Folders that directly contain files for this community
+            SELECT DISTINCT
+              f.FolderID,
+              f.CommunityID,
+              f.ParentFolderID,
+              f.FolderName,
+              f.FolderPath,
+              f.FolderType,
+              f.DisplayOrder,
+              f.IsActive,
+              f.CreatedOn,
+              f.CreatedBy,
+              f.ModifiedOn,
+              f.ModifiedBy,
+              0 AS Level
+            FROM cor_Folders f
+            INNER JOIN cor_Files files ON f.FolderID = files.FolderID
+            WHERE f.FolderType = 'Corporate'
+              AND files.CommunityID = @CommunityID
+              AND files.IsActive = 1
+              AND f.IsActive = 1
+            
+            UNION ALL
+            
+            -- Recursive case: Get parent folders
+            SELECT 
+              p.FolderID,
+              p.CommunityID,
+              p.ParentFolderID,
+              p.FolderName,
+              p.FolderPath,
+              p.FolderType,
+              p.DisplayOrder,
+              p.IsActive,
+              p.CreatedOn,
+              p.CreatedBy,
+              p.ModifiedOn,
+              p.ModifiedBy,
+              fh.Level + 1 AS Level
+            FROM cor_Folders p
+            INNER JOIN FolderHierarchy fh ON p.FolderID = fh.ParentFolderID
+            WHERE p.FolderType = 'Corporate'
+              AND p.IsActive = 1
+              AND fh.Level < 10  -- Prevent infinite recursion (max 10 levels deep)
+          )
+          SELECT DISTINCT
+            FolderID,
+            CommunityID,
+            ParentFolderID,
+            FolderName,
+            FolderPath,
+            FolderType,
+            DisplayOrder,
+            IsActive,
+            CreatedOn,
+            CreatedBy,
+            ModifiedOn,
+            ModifiedBy
+          FROM FolderHierarchy
+          ORDER BY DisplayOrder, FolderName
+        `);
+      
+      const folders = result.recordset;
+      logger.info('Fetched Corporate folders for community', 'Folder', {
+        communityId,
+        folderCount: folders.length,
+        folderNames: folders.map(f => f.FolderName)
+      });
+      
+      return folders;
+    } catch (error) {
+      logger.error('Error fetching corporate folders for community', 'Folder', { communityId }, error);
+      throw error;
+    }
+  },
+
+  /**
    * Get folder by ID
    * @param {string} folderId - Folder ID
    * @returns {Promise<Object|null>} Folder object or null

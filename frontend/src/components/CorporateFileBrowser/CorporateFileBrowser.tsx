@@ -24,6 +24,7 @@ const CorporateFileBrowser: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -180,31 +181,66 @@ const CorporateFileBrowser: React.FC = () => {
 
   // Handle file selection and upload
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-    if (!selectedFile) return;
+    const selectedFiles = event.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
 
+    const filesArray = Array.from(selectedFiles);
     setIsUploading(true);
+    setUploadProgress({ current: 0, total: filesArray.length, fileName: '' });
+
+    const errors: string[] = [];
+    const successes: string[] = [];
+
     try {
-      await dataService.uploadFile({
-        file: selectedFile,
-        CommunityID: null, // Corporate files have no CommunityID
-        FolderID: currentFolderId,
-        FolderType: 'Corporate'
-      });
-      
-      // Reload files after successful upload
+      // Upload files sequentially to avoid overwhelming the server
+      for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i];
+        setUploadProgress({ current: i + 1, total: filesArray.length, fileName: file.name });
+
+        try {
+          logger.info('Uploading file', 'CorporateFileBrowser', {
+            fileName: file.name,
+            currentFolderId,
+            progress: `${i + 1}/${filesArray.length}`
+          });
+
+          await dataService.uploadFile({
+            file: file,
+            CommunityID: null, // Corporate files have no CommunityID
+            FolderID: currentFolderId,
+            FolderType: 'Corporate'
+          });
+
+          successes.push(file.name);
+        } catch (error) {
+          logger.error('Error uploading file', 'CorporateFileBrowser', { fileName: file.name }, error as Error);
+          errors.push(file.name);
+        }
+      }
+
+      // Reload files after all uploads complete
       const filesData = await dataService.getCorporateFilesByFolder(currentFolderId);
       setFiles(filesData);
-      
+
+      // Show summary message
+      if (errors.length > 0 && successes.length > 0) {
+        alert(`Uploaded ${successes.length} file(s) successfully.\nFailed to upload: ${errors.join(', ')}`);
+      } else if (errors.length > 0) {
+        alert(`Failed to upload ${errors.length} file(s): ${errors.join(', ')}`);
+      } else if (successes.length > 1) {
+        alert(`Successfully uploaded ${successes.length} files!`);
+      }
+
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      logger.error('Error uploading file', 'CorporateFileBrowser', { fileName: selectedFile.name }, error as Error);
-      alert('Failed to upload file. Please try again.');
+      logger.error('Error during file upload process', 'CorporateFileBrowser', {}, error as Error);
+      alert('An error occurred during upload. Please try again.');
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -270,13 +306,18 @@ const CorporateFileBrowser: React.FC = () => {
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <PlusIcon className="w-5 h-5" />
-                  {isUploading ? 'Uploading...' : 'Upload File'}
+                  {isUploading && uploadProgress 
+                    ? `Uploading ${uploadProgress.current}/${uploadProgress.total}...` 
+                    : isUploading 
+                    ? 'Uploading...' 
+                    : 'Upload Files'}
                 </button>
                 <input
                   ref={fileInputRef}
                   type="file"
                   className="hidden"
                   onChange={handleFileChange}
+                  multiple
                 />
               </div>
             </div>
@@ -412,28 +453,52 @@ const CorporateFileBrowser: React.FC = () => {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 pt-2 border-t border-primary">
-                            <button
-                              onClick={() => handlePreview(file)}
-                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-sm text-tertiary hover:bg-surface-tertiary rounded transition-colors"
-                              title="View"
-                            >
-                              <EyeIcon className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDownload(file)}
-                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-sm text-tertiary hover:bg-surface-tertiary rounded transition-colors"
-                              title="Download"
-                            >
-                              <ArrowDownTrayIcon className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteFile(file)}
-                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-sm text-red-600 hover:bg-red-900/20 rounded transition-colors"
-                              title="Delete"
-                            >
-                              <TrashIcon className="w-4 h-4" />
-                            </button>
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-primary">
+                            {/* Indexing Status Badge for PDFs - Left side */}
+                            {file.mimeType === 'application/pdf' && (
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                  file.isIndexed
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                    : file.indexingError
+                                    ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                    : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                }`}
+                                title={
+                                  file.isIndexed
+                                    ? `Indexed on ${file.lastIndexedDate ? formatDate(file.lastIndexedDate) : 'Unknown'}`
+                                    : file.indexingError
+                                    ? `Indexing failed: ${file.indexingError.substring(0, 50)}...`
+                                    : 'Not indexed yet'
+                                }
+                              >
+                                {file.isIndexed ? '✓ Indexed' : file.indexingError ? '✗ Error' : '○ Pending'}
+                              </span>
+                            )}
+                            {/* Action buttons - Right side */}
+                            <div className="flex items-center gap-2 ml-auto">
+                              <button
+                                onClick={() => handlePreview(file)}
+                                className="flex items-center justify-center gap-1 px-2 py-1.5 text-sm text-tertiary hover:bg-surface-tertiary rounded transition-colors"
+                                title="View"
+                              >
+                                <EyeIcon className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDownload(file)}
+                                className="flex items-center justify-center gap-1 px-2 py-1.5 text-sm text-tertiary hover:bg-surface-tertiary rounded transition-colors"
+                                title="Download"
+                              >
+                                <ArrowDownTrayIcon className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFile(file)}
+                                className="flex items-center justify-center gap-1 px-2 py-1.5 text-sm text-red-600 hover:bg-red-900/20 rounded transition-colors"
+                                title="Delete"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );

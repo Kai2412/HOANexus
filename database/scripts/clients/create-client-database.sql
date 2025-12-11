@@ -786,6 +786,14 @@ CREATE TABLE dbo.cor_Files (
     CreatedBy               uniqueidentifier NULL,
     ModifiedOn              datetime2 NULL,
     ModifiedBy              uniqueidentifier NULL,
+    -- Document indexing metadata (for AI/RAG feature)
+    IsIndexed               bit NOT NULL DEFAULT 0, -- Has file been indexed for AI search?
+    LastIndexedDate         datetime2 NULL, -- When file was last indexed
+    IndexingVersion         int NULL DEFAULT 1, -- Version of indexing logic used
+    FileHash                nvarchar(64) NULL, -- SHA-256 hash of file content (for change detection)
+    IndexingError           nvarchar(MAX) NULL, -- Error message if indexing failed
+    ChunkCount              int NULL DEFAULT 0, -- Number of text chunks created during indexing
+    ForceReindex            bit NOT NULL DEFAULT 0, -- Admin flag to force re-indexing
     
     CONSTRAINT FK_cor_Files_Folder 
         FOREIGN KEY (FolderID) 
@@ -798,7 +806,9 @@ CREATE TABLE dbo.cor_Files (
     CONSTRAINT CK_cor_Files_FolderType_CommunityID 
         CHECK (
             (FolderType = 'Community' AND CommunityID IS NOT NULL) OR
-            (FolderType = 'Corporate' AND CommunityID IS NULL)
+            (FolderType = 'Corporate')
+            -- Note: Corporate files CAN have CommunityID (for linked files like invoices)
+            -- This allows Corporate files to be linked to communities while appearing in Corporate folder structure
         )
 );
 GO
@@ -818,6 +828,16 @@ GO
 
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Files_FileType' AND object_id = OBJECT_ID('dbo.cor_Files'))
     CREATE INDEX IX_cor_Files_FileType ON dbo.cor_Files(FileType);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Files_IsIndexed' AND object_id = OBJECT_ID('dbo.cor_Files'))
+    CREATE INDEX IX_cor_Files_IsIndexed ON dbo.cor_Files(IsIndexed) 
+    WHERE IsIndexed = 0; -- Filtered index for unindexed files only
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_Files_FileHash' AND object_id = OBJECT_ID('dbo.cor_Files'))
+    CREATE INDEX IX_cor_Files_FileHash ON dbo.cor_Files(FileHash) 
+    WHERE FileHash IS NOT NULL; -- Filtered index for hash lookups
 GO
 
 PRINT 'File storage tables (cor_Folders, cor_Files) created successfully.';
@@ -921,6 +941,106 @@ GO
 PRINT 'Invoice tables (cor_Invoices, cor_InvoiceCharges) created successfully.';
 GO
 
+-- =============================================
+-- cor_FinancialData: Extracted financial data from monthly financial statement PDFs
+-- =============================================
+IF OBJECT_ID('dbo.cor_FinancialData', 'U') IS NOT NULL
+BEGIN
+    IF OBJECT_ID('FK_cor_FinancialData_Community', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_FinancialData DROP CONSTRAINT FK_cor_FinancialData_Community;
+    IF OBJECT_ID('FK_cor_FinancialData_File', 'F') IS NOT NULL
+        ALTER TABLE dbo.cor_FinancialData DROP CONSTRAINT FK_cor_FinancialData_File;
+    DROP TABLE dbo.cor_FinancialData;
+    PRINT 'Dropped existing cor_FinancialData table.';
+END
+GO
+
+CREATE TABLE dbo.cor_FinancialData (
+    FinancialDataID uniqueidentifier NOT NULL 
+        CONSTRAINT PK_cor_FinancialData PRIMARY KEY DEFAULT NEWID(),
+    CommunityID uniqueidentifier NOT NULL,
+    FileID uniqueidentifier NULL, -- Link to source PDF file
+    StatementDate date NOT NULL, -- Date from statement (e.g., 2025-10-31)
+    StatementMonth int NOT NULL, -- 1-12
+    StatementYear int NOT NULL, -- 2025, 2026, etc.
+    
+    -- Income Data (stored as JSON for flexibility)
+    IncomeData nvarchar(MAX) NULL, -- JSON: assessments by community, interest, late fees, etc.
+    
+    -- Expense Data (stored as JSON for flexibility)
+    ExpenseData nvarchar(MAX) NULL, -- JSON: categories and amounts (General/Admin, Maintenance, Reserve)
+    
+    -- Balance Sheet Data (stored as JSON)
+    BalanceSheetData nvarchar(MAX) NULL, -- JSON: assets, liabilities, equity, fund balances
+    
+    -- Aggregated Totals (for fast queries without parsing JSON)
+    TotalIncome decimal(12,2) NULL,
+    TotalExpenses decimal(12,2) NULL,
+    NetIncome decimal(12,2) NULL, -- Income - Expenses
+    YTDIncome decimal(12,2) NULL,
+    YTDExpenses decimal(12,2) NULL,
+    YTDNetIncome decimal(12,2) NULL,
+    
+    -- Assessment Data (for collection rate calculations)
+    AssessmentIncome decimal(12,2) NULL, -- Total assessments billed
+    AssessmentCollected decimal(12,2) NULL, -- Total assessments collected
+    CollectionRate decimal(5,4) NULL, -- 0.9600 = 96% collection rate
+    
+    -- Extraction Metadata
+    ExtractedOn datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    ExtractionVersion int NULL DEFAULT 1, -- Version of extraction logic used
+    ExtractionError nvarchar(MAX) NULL, -- Error message if extraction failed
+    
+    -- Audit Fields
+    CreatedOn datetime2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy uniqueidentifier NULL,
+    ModifiedOn datetime2 NULL,
+    ModifiedBy uniqueidentifier NULL,
+    IsActive bit NOT NULL DEFAULT 1,
+    
+    -- Foreign Keys
+    CONSTRAINT FK_cor_FinancialData_Community 
+        FOREIGN KEY (CommunityID) 
+        REFERENCES dbo.cor_Communities(CommunityID),
+    CONSTRAINT FK_cor_FinancialData_File 
+        FOREIGN KEY (FileID) 
+        REFERENCES dbo.cor_Files(FileID),
+    
+    -- Check Constraints
+    CONSTRAINT CK_cor_FinancialData_Month 
+        CHECK (StatementMonth >= 1 AND StatementMonth <= 12),
+    CONSTRAINT CK_cor_FinancialData_CollectionRate 
+        CHECK (CollectionRate IS NULL OR (CollectionRate >= 0 AND CollectionRate <= 1))
+);
+GO
+
+-- Indexes for cor_FinancialData
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_FinancialData_CommunityID' AND object_id = OBJECT_ID('dbo.cor_FinancialData'))
+    CREATE NONCLUSTERED INDEX IX_cor_FinancialData_CommunityID 
+        ON dbo.cor_FinancialData(CommunityID);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_FinancialData_Date' AND object_id = OBJECT_ID('dbo.cor_FinancialData'))
+    CREATE NONCLUSTERED INDEX IX_cor_FinancialData_Date 
+        ON dbo.cor_FinancialData(StatementYear, StatementMonth);
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_cor_FinancialData_FileID' AND object_id = OBJECT_ID('dbo.cor_FinancialData'))
+    CREATE NONCLUSTERED INDEX IX_cor_FinancialData_FileID 
+        ON dbo.cor_FinancialData(FileID) 
+        WHERE FileID IS NOT NULL;
+GO
+
+-- Unique constraint: One financial statement per community per month/year
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UQ_cor_FinancialData_Community_Date' AND object_id = OBJECT_ID('dbo.cor_FinancialData'))
+    CREATE UNIQUE NONCLUSTERED INDEX UQ_cor_FinancialData_Community_Date 
+        ON dbo.cor_FinancialData(CommunityID, StatementYear, StatementMonth) 
+        WHERE IsActive = 1;
+GO
+
+PRINT 'Financial data table (cor_FinancialData) created successfully.';
+GO
+
 PRINT 'Created tables:';
 PRINT '  - cor_Stakeholders (with GUIDs)';
 PRINT '  - cor_Communities';
@@ -935,6 +1055,7 @@ PRINT '  - cor_Folders';
 PRINT '  - cor_Files';
 PRINT '  - cor_Invoices';
 PRINT '  - cor_InvoiceCharges';
+PRINT '  - cor_FinancialData';
 PRINT '';
 PRINT 'Next steps:';
 PRINT '  1. Update backend connection strings to use hoa_nexus_testclient';
